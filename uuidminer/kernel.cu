@@ -110,7 +110,7 @@ __global__ void kernel_md5_hash_player_name(const int length, u8* cuda_indata, u
     }
 
     // in_traversal_part is a base 63 integer as the index of available_chars
-    u8 in_traversal_part[player_name_max_length] = { 0 };
+    u8 in_traversal_part[player_name_max_length] = {0};
 
     // iterate through all possible player names with (length + 3) characters
     const int thread_max_iteration_count = pow(available_char_length, length);
@@ -120,7 +120,7 @@ __global__ void kernel_md5_hash_player_name(const int length, u8* cuda_indata, u
         get_next_index(in_traversal_part, length);
 
         // assemble the MD5 input
-        u8 in[player_name_prefix_length + player_name_max_length] = { 0 };
+        u8 in[player_name_prefix_length + player_name_max_length] = {0};
         for (int i = 0; i < player_name_prefix_length; ++i)
         {
             in[i] = player_name_prefix[i];
@@ -149,7 +149,8 @@ __global__ void kernel_md5_hash_player_name(const int length, u8* cuda_indata, u
         convert_md5_to_u128(out, &current_out_hi, &current_out_lo);
         convert_md5_to_u128(cuda_outdata, &local_best_out_hi, &local_best_out_lo);
 
-        if (current_out_hi < local_best_out_hi || (current_out_hi == local_best_out_hi && current_out_lo < local_best_out_lo))
+        if (current_out_hi < local_best_out_hi || (current_out_hi == local_best_out_hi && current_out_lo <
+            local_best_out_lo))
         {
             for (int i = 0; i < player_name_max_length; ++i)
             {
@@ -184,50 +185,55 @@ int main()
     int thread = 256;
     int block = (available_char_length_pow_3 + thread - 1) / thread;
 
-    kernel_md5_hash_player_name << < block, thread >> > (3, cuda_indata, cuda_outdata);
-    cudaDeviceSynchronize();
-
-    auto indata = new u8[available_char_length_pow_3 * player_name_max_length];
-    auto outdata = new u8[available_char_length_pow_3 * md5_block_size];
-    cudaMemcpy(indata, cuda_indata, available_char_length_pow_3 * player_name_max_length, cudaMemcpyDeviceToHost);
-    cudaMemcpy(outdata, cuda_outdata, available_char_length_pow_3 * md5_block_size, cudaMemcpyDeviceToHost);
-
-    const cudaError_t error = cudaGetLastError();
-    if (error != cudaSuccess)
+    for (int i = 0; i <= player_name_max_length - 3; ++i)
     {
-        printf("Error kernel_md5_hash_player_name: %s \n", cudaGetErrorString(error));
+        printf("Finding the %d-character player name with the smallest offline UUID...\n", i + 3);
+
+        kernel_md5_hash_player_name << < block, thread >> >(i, cuda_indata, cuda_outdata);
+        cudaDeviceSynchronize();
+
+        auto indata = new u8[available_char_length_pow_3 * player_name_max_length];
+        auto outdata = new u8[available_char_length_pow_3 * md5_block_size];
+        cudaMemcpy(indata, cuda_indata, available_char_length_pow_3 * player_name_max_length, cudaMemcpyDeviceToHost);
+        cudaMemcpy(outdata, cuda_outdata, available_char_length_pow_3 * md5_block_size, cudaMemcpyDeviceToHost);
+
+        const cudaError_t error = cudaGetLastError();
+        if (error != cudaSuccess)
+        {
+            printf("Error kernel_md5_hash_player_name: %s \n", cudaGetErrorString(error));
+        }
+
+        // find the best player name in the results
+        u8 best_in[player_name_max_length] = {0};
+        u64 best_out_hi = ULLONG_MAX;
+        u64 best_out_lo = ULLONG_MAX;
+
+        for (int i = 0; i < available_char_length_pow_3; ++i)
+        {
+            u64 hi, lo;
+            convert_md5_to_u128_cpu(outdata + i * md5_block_size, &hi, &lo);
+            if (hi < best_out_hi || (hi == best_out_hi && lo < best_out_lo))
+            {
+                for (int j = 0; j < player_name_max_length; ++j)
+                {
+                    best_in[j] = indata[i * player_name_max_length + j];
+                }
+                best_out_hi = hi;
+                best_out_lo = lo;
+            }
+        }
+
+        printf("Player name: ");
+        for (const u8 i : best_in)
+        {
+            printf("%c", i);
+        }
+        printf("\nMD5: ");
+        printf("%016llx%016llx", best_out_hi, best_out_lo);
     }
 
     cudaFree(cuda_indata);
     cudaFree(cuda_outdata);
-
-    // find the best player name in the results
-    u8 best_in[player_name_max_length] = { 0 };
-    u64 best_out_hi = ULLONG_MAX;
-    u64 best_out_lo = ULLONG_MAX;
-
-    for (int i = 0; i < available_char_length_pow_3; ++i)
-    {
-        u64 hi, lo;
-        convert_md5_to_u128_cpu(outdata + i * md5_block_size, &hi, &lo);
-        if (hi < best_out_hi || (hi == best_out_hi && lo < best_out_lo))
-        {
-            for (int j = 0; j < player_name_max_length; ++j)
-            {
-                best_in[j] = indata[i * player_name_max_length + j];
-            }
-            best_out_hi = hi;
-            best_out_lo = lo;
-        }
-    }
-
-    printf("Best player name: ");
-    for (const u8 i : best_in)
-    {
-        printf("%c", i);
-    }
-    printf("\nMD5: ");
-    printf("%016llx%016llx\n", best_out_hi, best_out_lo);
 
     return 0;
 }
