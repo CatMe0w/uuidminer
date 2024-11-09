@@ -31,6 +31,7 @@
 /**************************** DATA TYPES ****************************/
 // typedef unsigned char u8;
 // typedef unsigned int u32;
+// MOVED TO common.h
 
 // typedef struct
 // {
@@ -39,7 +40,7 @@
 // 	unsigned long long bitlen;
 // 	u32 state[4];
 // } cuda_md5_ctx;
-// MOVED TO common.h
+// MOVED TO md5.cuh
 
 /****************************** MACROS ******************************/
 #ifndef ROTLEFT
