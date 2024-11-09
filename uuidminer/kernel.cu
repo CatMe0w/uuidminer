@@ -113,7 +113,8 @@ __global__ void kernel_md5_hash_player_name(const int length, u8* cuda_indata, u
     u8 in_traversal_part[player_name_max_length] = { 0 };
 
     // iterate through all possible player names with (length + 3) characters
-    for (int _ = 0; _ < pow(available_char_length, length); ++_)
+    const int thread_max_iteration_count = pow(available_char_length, length);
+    for (int _ = 0; _ < thread_max_iteration_count; ++_)
     {
         // add 1 to in_traversal_part
         get_next_index(in_traversal_part, length);
