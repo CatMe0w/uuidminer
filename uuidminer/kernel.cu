@@ -35,7 +35,7 @@ __device__ void get_next_index(u8* num, const int length)
     for (int i = length - 1; i >= 0 && carry > 0; --i)
     {
         num[i] += carry;
-        if (num[i] >= 63)
+        if (num[i] >= available_char_length)
         {
             num[i] = 0;
             carry = 1;
@@ -100,10 +100,6 @@ __global__ void kernel_md5_hash_player_name(const int length, u8* cuda_indata, u
     u8 local_best_in[player_name_max_length] = {0};
     u8 local_best_out[md5_block_size] = {0};
 
-    for (unsigned char& i : local_best_in)
-    {
-        i = UINT8_MAX;
-    }
     for (unsigned char& i : local_best_out)
     {
         i = UINT8_MAX;
@@ -147,7 +143,7 @@ __global__ void kernel_md5_hash_player_name(const int length, u8* cuda_indata, u
         u64 current_out_hi, current_out_lo, local_best_out_hi, local_best_out_lo;
 
         convert_md5_to_u128(out, &current_out_hi, &current_out_lo);
-        convert_md5_to_u128(cuda_outdata, &local_best_out_hi, &local_best_out_lo);
+        convert_md5_to_u128(local_best_out, &local_best_out_hi, &local_best_out_lo);
 
         if (current_out_hi < local_best_out_hi || (current_out_hi == local_best_out_hi && current_out_lo <
             local_best_out_lo))
