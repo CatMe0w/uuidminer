@@ -178,16 +178,32 @@ int main()
     cudaMalloc(&cuda_outdata, available_char_length_pow_3 * md5_block_size);
 
     // 250112 threads (250047 used), 977 blocks
-    int thread = 256;
-    int block = (available_char_length_pow_3 + thread - 1) / thread;
+    constexpr int thread = 256;
+    constexpr int block = (available_char_length_pow_3 + thread - 1) / thread;
 
     for (int i = 0; i <= player_name_max_length - 3; ++i)
     {
         printf("Finding the %d-character player name with the smallest offline UUID...\n", i + 3);
 
+        // measure time
+        cudaEvent_t start, stop;
+        cudaEventCreate(&start);
+        cudaEventCreate(&stop);
+        cudaEventRecord(start);
+
+        // launch kernel
         kernel_md5_hash_player_name << < block, thread >> >(i, cuda_indata, cuda_outdata);
         cudaDeviceSynchronize();
 
+        // measure time
+        cudaEventRecord(stop);
+        cudaEventSynchronize(stop);
+        float milliseconds = 0;
+        cudaEventElapsedTime(&milliseconds, start, stop);
+        cudaEventDestroy(start);
+        cudaEventDestroy(stop);
+
+        // copy results to host
         auto indata = new u8[available_char_length_pow_3 * player_name_max_length];
         auto outdata = new u8[available_char_length_pow_3 * md5_block_size];
         cudaMemcpy(indata, cuda_indata, available_char_length_pow_3 * player_name_max_length, cudaMemcpyDeviceToHost);
@@ -229,11 +245,12 @@ int main()
         printf("\nOffline UUID: ");
         best_out_hi = (best_out_hi & 0xFFFFFFFFFFFF0FFFULL) | 0x0000000000003000ULL;
         best_out_lo = (best_out_lo & 0xFFFFFFFFFFFF3FFFULL) | 0x0000000000008000ULL;
-        printf("%04llx%04llx-%04llx-%04llx-%04llx-%04llx%04llx%04llx\n\n",
-            (best_out_hi >> 48) & 0xffff, (best_out_hi >> 32) & 0xffff,
-            (best_out_hi >> 16) & 0xffff, best_out_hi & 0xffff,
-            (best_out_lo >> 48) & 0xffff, (best_out_lo >> 32) & 0xffff,
-            (best_out_lo >> 16) & 0xffff, best_out_lo & 0xffff);
+        printf("%04llx%04llx-%04llx-%04llx-%04llx-%04llx%04llx%04llx\n",
+               (best_out_hi >> 48) & 0xffff, (best_out_hi >> 32) & 0xffff,
+               (best_out_hi >> 16) & 0xffff, best_out_hi & 0xffff,
+               (best_out_lo >> 48) & 0xffff, (best_out_lo >> 32) & 0xffff,
+               (best_out_lo >> 16) & 0xffff, best_out_lo & 0xffff);
+        printf("Time elapsed: %.3f ms\n\n", milliseconds);
     }
 
     cudaFree(cuda_indata);
