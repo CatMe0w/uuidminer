@@ -188,13 +188,12 @@ int main()
     int block = (available_char_length_pow_3 + thread - 1) / thread;
 
     kernel_md5_hash_player_name << < block, thread >> > (3, cuda_indata, cuda_outdata);
+    cudaDeviceSynchronize();
 
     auto indata = new u8[available_char_length_pow_3 * player_name_max_length];
     auto outdata = new u8[available_char_length_pow_3 * md5_block_size];
     cudaMemcpy(indata, cuda_indata, available_char_length_pow_3 * player_name_max_length, cudaMemcpyDeviceToHost);
     cudaMemcpy(outdata, cuda_outdata, available_char_length_pow_3 * md5_block_size, cudaMemcpyDeviceToHost);
-
-    cudaDeviceSynchronize();
 
     const cudaError_t error = cudaGetLastError();
     if (error != cudaSuccess)
