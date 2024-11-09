@@ -75,7 +75,7 @@ void convert_md5_to_u128_cpu(const u8 md5[md5_block_size], u64* hi, u64* lo)
 
 __global__ void kernel_md5_hash_player_name(const int length, u8* cuda_indata, u8* cuda_outdata)
 {
-    u32 thread = blockIdx.x * blockDim.x + threadIdx.x;
+    const u32 thread = blockIdx.x * blockDim.x + threadIdx.x;
     if (thread >= available_char_length_pow_3)
     {
         return;
@@ -88,13 +88,13 @@ __global__ void kernel_md5_hash_player_name(const int length, u8* cuda_indata, u
     // prefix: "OfflinePlayer:" 14 bytes
     // in_traversal_part: (length) bytes
     // byte_a, byte_b, byte_c: 1 byte each
-    int byte_a_idx = thread / (available_char_length_pow_2);
-    int byte_b_idx = (thread % (available_char_length_pow_2)) / available_char_length;
-    int byte_c_idx = thread % available_char_length;
+    const int byte_a_idx = thread / (available_char_length_pow_2);
+    const int byte_b_idx = thread % available_char_length_pow_2 / available_char_length;
+    const int byte_c_idx = thread % available_char_length;
 
-    u8 byte_a = available_chars[byte_a_idx];
-    u8 byte_b = available_chars[byte_b_idx];
-    u8 byte_c = available_chars[byte_c_idx];
+    const u8 byte_a = available_chars[byte_a_idx];
+    const u8 byte_b = available_chars[byte_b_idx];
+    const u8 byte_c = available_chars[byte_c_idx];
 
     // best result within this thread
     u8 local_best_in[player_name_max_length] = {0};
@@ -130,7 +130,7 @@ __global__ void kernel_md5_hash_player_name(const int length, u8* cuda_indata, u
         in[player_name_prefix_length + length + 2] = byte_c;
 
         // calculate MD5 hash
-        u32 inlen = player_name_prefix_length + length + 3;
+        const u32 inlen = player_name_prefix_length + length + 3;
         u8 out[md5_block_size];
 
         cuda_md5_ctx ctx;
@@ -192,7 +192,7 @@ int main()
         cudaEventRecord(start);
 
         // launch kernel
-        kernel_md5_hash_player_name << < block, thread >> >(i, cuda_indata, cuda_outdata);
+        kernel_md5_hash_player_name<<<block, thread>>>(i, cuda_indata, cuda_outdata);
         cudaDeviceSynchronize();
 
         // measure time
@@ -204,8 +204,8 @@ int main()
         cudaEventDestroy(stop);
 
         // copy results to host
-        auto indata = new u8[available_char_length_pow_3 * player_name_max_length];
-        auto outdata = new u8[available_char_length_pow_3 * md5_block_size];
+        const auto indata = new u8[available_char_length_pow_3 * player_name_max_length];
+        const auto outdata = new u8[available_char_length_pow_3 * md5_block_size];
         cudaMemcpy(indata, cuda_indata, available_char_length_pow_3 * player_name_max_length, cudaMemcpyDeviceToHost);
         cudaMemcpy(outdata, cuda_outdata, available_char_length_pow_3 * md5_block_size, cudaMemcpyDeviceToHost);
 
@@ -220,15 +220,15 @@ int main()
         u64 best_out_hi = ULLONG_MAX;
         u64 best_out_lo = ULLONG_MAX;
 
-        for (int i = 0; i < available_char_length_pow_3; ++i)
+        for (int j = 0; j < available_char_length_pow_3; ++j)
         {
             u64 hi, lo;
-            convert_md5_to_u128_cpu(outdata + i * md5_block_size, &hi, &lo);
+            convert_md5_to_u128_cpu(outdata + j * md5_block_size, &hi, &lo);
             if (hi < best_out_hi || (hi == best_out_hi && lo < best_out_lo))
             {
-                for (int j = 0; j < player_name_max_length; ++j)
+                for (int k = 0; k < player_name_max_length; ++k)
                 {
-                    best_in[j] = indata[i * player_name_max_length + j];
+                    best_in[k] = indata[j * player_name_max_length + k];
                 }
                 best_out_hi = hi;
                 best_out_lo = lo;
@@ -236,9 +236,9 @@ int main()
         }
 
         printf("Player name: ");
-        for (const u8 i : best_in)
+        for (const u8 c : best_in)
         {
-            printf("%c", i);
+            printf("%c", c);
         }
         printf("\nMD5: ");
         printf("%016llx%016llx", best_out_hi, best_out_lo);
@@ -255,6 +255,9 @@ int main()
 
     cudaFree(cuda_indata);
     cudaFree(cuda_outdata);
+
+    printf("Press any key to exit...");
+    (void)getchar();
 
     return 0;
 }

@@ -161,7 +161,7 @@ __device__ void cuda_md5_init(cuda_md5_ctx* ctx)
     ctx->state[3] = 0x10325476;
 }
 
-__device__ void cuda_md5_update(cuda_md5_ctx* ctx, const u8 data[], size_t len)
+__device__ void cuda_md5_update(cuda_md5_ctx* ctx, const u8 data[], const size_t len)
 {
     size_t i;
 
@@ -223,14 +223,14 @@ __device__ void cuda_md5_final(cuda_md5_ctx* ctx, u8 hash[])
     }
 }
 
-__global__ void kernel_md5_hash(u8* indata, u32 inlen, u8* outdata, u32 n_batch)
+__global__ void kernel_md5_hash(const u8* indata, const u32 inlen, u8* outdata, const u32 n_batch)
 {
-    u32 thread = blockIdx.x * blockDim.x + threadIdx.x;
+    const u32 thread = blockIdx.x * blockDim.x + threadIdx.x;
     if (thread >= n_batch)
     {
         return;
     }
-    u8* in = indata + thread * inlen;
+    const u8* in = indata + thread * inlen;
     u8* out = outdata + thread * md5_block_size;
     cuda_md5_ctx ctx;
     cuda_md5_init(&ctx);
@@ -239,7 +239,7 @@ __global__ void kernel_md5_hash(u8* indata, u32 inlen, u8* outdata, u32 n_batch)
 }
 
 
-void mcm_cuda_md5_hash_batch(u8* in, u32 inlen, u8* out, u32 n_batch)
+void mcm_cuda_md5_hash_batch(const u8* in, const u32 inlen, u8* out, const u32 n_batch)
 {
     u8* cuda_indata;
     u8* cuda_outdata;
@@ -250,10 +250,10 @@ void mcm_cuda_md5_hash_batch(u8* in, u32 inlen, u8* out, u32 n_batch)
     u32 thread = 256;
     u32 block = (n_batch + thread - 1) / thread;
 
-    kernel_md5_hash << < block, thread >> >(cuda_indata, inlen, cuda_outdata, n_batch);
+    kernel_md5_hash<<<block, thread>>>(cuda_indata, inlen, cuda_outdata, n_batch);
     cudaMemcpy(out, cuda_outdata, md5_block_size * n_batch, cudaMemcpyDeviceToHost);
     cudaDeviceSynchronize();
-    cudaError_t error = cudaGetLastError();
+    const cudaError_t error = cudaGetLastError();
     if (error != cudaSuccess)
     {
         printf("Error cuda md5 hash: %s \n", cudaGetErrorString(error));
