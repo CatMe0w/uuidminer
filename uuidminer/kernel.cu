@@ -22,6 +22,8 @@ __constant__ u8 available_chars[] = {
 };
 
 constexpr auto available_char_length = 63;
+constexpr auto available_char_length_pow_2 = 63 * 63;
+constexpr auto available_char_length_pow_3 = 63 * 63 * 63;
 
 constexpr auto player_name_max_length = 16;
 
@@ -74,7 +76,7 @@ void convert_md5_to_u128_cpu(const u8 md5[md5_block_size], u64* hi, u64* lo)
 __global__ void kernel_md5_hash_player_name(const int length, u8* cuda_indata, u8* cuda_outdata)
 {
     u32 thread = blockIdx.x * blockDim.x + threadIdx.x;
-    if (thread >= available_char_length * available_char_length * available_char_length)
+    if (thread >= available_char_length_pow_3)
     {
         return;
     }
@@ -86,8 +88,8 @@ __global__ void kernel_md5_hash_player_name(const int length, u8* cuda_indata, u
     // prefix: "OfflinePlayer:" 14 bytes
     // in_traversal_part: (length) bytes
     // byte_a, byte_b, byte_c: 1 byte each
-    int byte_a_idx = thread / (available_char_length * available_char_length);
-    int byte_b_idx = (thread % (available_char_length * available_char_length)) / available_char_length;
+    int byte_a_idx = thread / (available_char_length_pow_2);
+    int byte_b_idx = (thread % (available_char_length_pow_2)) / available_char_length;
     int byte_c_idx = thread % available_char_length;
 
     u8 byte_a = available_chars[byte_a_idx];
@@ -178,23 +180,23 @@ int main()
     // test 2: 6 chars player name md5 hash
     u8* cuda_indata;
     u8* cuda_outdata;
-    cudaMalloc(&cuda_indata, available_char_length * available_char_length * available_char_length * player_name_max_length);
-    cudaMalloc(&cuda_outdata, available_char_length * available_char_length * available_char_length * md5_block_size);
+    cudaMalloc(&cuda_indata, available_char_length_pow_3 * player_name_max_length);
+    cudaMalloc(&cuda_outdata, available_char_length_pow_3 * md5_block_size);
 
     // 250047 threads, 977 blocks
     int thread = 256;
-    int block = (available_char_length * available_char_length * available_char_length + thread - 1) / thread;
+    int block = (available_char_length_pow_3 + thread - 1) / thread;
 
     kernel_md5_hash_player_name << < block, thread >> > (3, cuda_indata, cuda_outdata);
 
-    auto indata = new u8[available_char_length * available_char_length * available_char_length * player_name_max_length];
-    auto outdata = new u8[available_char_length * available_char_length * available_char_length * md5_block_size];
-    cudaMemcpy(indata, cuda_indata, available_char_length * available_char_length * available_char_length * player_name_max_length, cudaMemcpyDeviceToHost);
-    cudaMemcpy(outdata, cuda_outdata, available_char_length * available_char_length * available_char_length * md5_block_size, cudaMemcpyDeviceToHost);
+    auto indata = new u8[available_char_length_pow_3 * player_name_max_length];
+    auto outdata = new u8[available_char_length_pow_3 * md5_block_size];
+    cudaMemcpy(indata, cuda_indata, available_char_length_pow_3 * player_name_max_length, cudaMemcpyDeviceToHost);
+    cudaMemcpy(outdata, cuda_outdata, available_char_length_pow_3 * md5_block_size, cudaMemcpyDeviceToHost);
 
     cudaDeviceSynchronize();
 
-    cudaError_t error = cudaGetLastError();
+    const cudaError_t error = cudaGetLastError();
     if (error != cudaSuccess)
     {
         printf("Error kernel_md5_hash_player_name: %s \n", cudaGetErrorString(error));
@@ -208,7 +210,7 @@ int main()
     u64 best_out_hi = ULLONG_MAX;
     u64 best_out_lo = ULLONG_MAX;
 
-    for (int i = 0; i < available_char_length * available_char_length * available_char_length; ++i)
+    for (int i = 0; i < available_char_length_pow_3; ++i)
     {
         u64 hi, lo;
         convert_md5_to_u128_cpu(outdata + i * md5_block_size, &hi, &lo);
