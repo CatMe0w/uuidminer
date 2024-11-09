@@ -100,6 +100,15 @@ __global__ void kernel_md5_hash_player_name(const int length, u8* cuda_indata, u
     u8 local_best_in[player_name_max_length] = {0};
     u8 local_best_out[md5_block_size] = {0};
 
+    for (unsigned char& i : local_best_in)
+    {
+        i = UINT8_MAX;
+    }
+    for (unsigned char& i : local_best_out)
+    {
+        i = UINT8_MAX;
+    }
+
     // in_traversal_part is a base 63 integer as the index of available_chars
     u8 in_traversal_part[player_name_max_length] = { 0 };
 
