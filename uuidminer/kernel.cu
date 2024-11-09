@@ -183,7 +183,7 @@ int main()
     cudaMalloc(&cuda_indata, available_char_length_pow_3 * player_name_max_length);
     cudaMalloc(&cuda_outdata, available_char_length_pow_3 * md5_block_size);
 
-    // 250047 threads, 977 blocks
+    // 250112 threads (250047 used), 977 blocks
     int thread = 256;
     int block = (available_char_length_pow_3 + thread - 1) / thread;
 
