@@ -76,6 +76,10 @@
     <CudaCompile>
       <TargetMachinePlatform>64</TargetMachinePlatform>
       <GenerateRelocatableDeviceCode>true</GenerateRelocatableDeviceCode>
+      <Runtime>MT</Runtime>
+      <Optimization>O3</Optimization>
+      <PtxAsOptionV>true</PtxAsOptionV>
+      <FastMath>true</FastMath>
     </CudaCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
