@@ -175,19 +175,6 @@ __global__ void kernel_md5_hash_player_name(const int length, u8* cuda_indata, u
 
 int main()
 {
-    // test 1: n-batch md5 hash
-    u8 in[21] = {
-        'O', 'f', 'f', 'l', 'i', 'n', 'e', 'P', 'l', 'a', 'y', 'e', 'r', ':', 'C', 'a', 't', 'M', 'e', '0', 'w'
-    };
-    u8 out[md5_block_size];
-    mcm_cuda_md5_hash_batch(in, 21, out, 1);
-    for (const u8 i : out)
-    {
-        printf("%02x", i);
-    }
-    printf("\n");
-
-    // test 2: 6 chars player name md5 hash
     u8* cuda_indata;
     u8* cuda_outdata;
     cudaMalloc(&cuda_indata, available_char_length_pow_3 * player_name_max_length);
