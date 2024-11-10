@@ -8,11 +8,11 @@ This project digs deep into the player name mines, brute-forcing through names t
 
 | Length | Name              | UUID                                   | Leading Zeros |
 | ------ | ----------------- | -------------------------------------- | ------------- |
-| 3      | `ign`             | `00006dae-4a2b-3a71-4473-11a2d155bf3f` | 4             |
-| 4      | `v4K4`            | `00000109-807f-3287-9a54-90aa57e7b62a` | 5             |
-| 5      | `16j63`           | `00000003-a5f8-3217-96d2-c96c3f60929c` | 7             |
-| 6      | `EhxMb9`          | `00000000-27ce-35d0-71ca-15b8d6f9bfbf` | 8             |
-| 7      | `tiHSNRY`         | `00000000-0002-3ff2-bda6-bf24a74fbc4e` | 11            |
+| 3      | `ign`             | `00006dae-4a2b-3a71-8473-11a2d1553f3f` | 4             |
+| 4      | `v4K4`            | `00000109-807f-3287-9a54-90aa57e7362a` | 5             |
+| 5      | `16j63`           | `00000003-a5f8-3217-96d2-c96c3f60529c` | 7             |
+| 6      | `EhxMb9`          | `00000000-27ce-35d0-b1ca-15b8d6f93fbf` | 8             |
+| 7      | `tiHSNRY`         | `00000000-0002-3ff2-bda6-bf24a74ffc4e` | 11            |
 | 8      | _Still mining..._ | _What will it be?_                     | ?             |
 
 This entire project was run on a single, humble RTX 3080 GPU. So, if you're waiting for the results for 8-character names and beyond… well, let's just say it might be a while. Perhaps forever!

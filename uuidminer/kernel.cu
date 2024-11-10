@@ -244,7 +244,7 @@ int main()
         printf("%016llx%016llx", best_out_hi, best_out_lo);
         printf("\nOffline UUID: ");
         best_out_hi = (best_out_hi & 0xFFFFFFFFFFFF0FFFULL) | 0x0000000000003000ULL;
-        best_out_lo = (best_out_lo & 0xFFFFFFFFFFFF3FFFULL) | 0x0000000000008000ULL;
+        best_out_lo = (best_out_lo & 0x3FFFFFFFFFFFFFFFULL) | 0x8000000000000000ULL;
         printf("%04llx%04llx-%04llx-%04llx-%04llx-%04llx%04llx%04llx\n",
                (best_out_hi >> 48) & 0xffff, (best_out_hi >> 32) & 0xffff,
                (best_out_hi >> 16) & 0xffff, best_out_hi & 0xffff,
