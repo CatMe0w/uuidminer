@@ -264,72 +264,87 @@ __global__ void kernel_md5_hash_player_name_t(const u32 offset, const u32 target
     }
 }
 
-int main(int argc, char** argv)
+struct app_config
 {
     int node_index = 0;
     int node_count = 1;
     int node_slices = 1;
     std::string target_str = "00000000";
+    u32 target_state0 = 0;
 
-    for (int i = 1; i < argc; ++i)
+    static bool parse(const int argc, char** argv, app_config& config)
     {
-        std::string arg = argv[i];
-        if (arg == "--node-index" && i + 1 < argc)
+        for (int i = 1; i < argc; ++i)
         {
-            node_index = std::stoi(argv[++i]);
+            std::string arg = argv[i];
+            if (arg == "--node-index" && i + 1 < argc)
+            {
+                config.node_index = std::stoi(argv[++i]);
+            }
+            else if (arg == "--node-count" && i + 1 < argc)
+            {
+                config.node_count = std::stoi(argv[++i]);
+            }
+            else if (arg == "--node-slices" && i + 1 < argc)
+            {
+                config.node_slices = std::stoi(argv[++i]);
+            }
+            else if (arg == "--target" && i + 1 < argc)
+            {
+                config.target_str = argv[++i];
+            }
         }
-        else if (arg == "--node-count" && i + 1 < argc)
+
+        if (config.target_str.length() != 8)
         {
-            node_count = std::stoi(argv[++i]);
+            fprintf(stderr, "Invalid target length: %s (must be 8 hex chars)\n\n", config.target_str.c_str());
+            return false;
         }
-        else if (arg == "--node-slices" && i + 1 < argc)
+
+        u32 target_val;
+        try
         {
-            node_slices = std::stoi(argv[++i]);
+            target_val = std::stoul(config.target_str, nullptr, 16);
         }
-        else if (arg == "--target" && i + 1 < argc)
+        catch (...)
         {
-            target_str = argv[++i];
+            fprintf(stderr, "Invalid target hex: %s\n", config.target_str.c_str());
+            return false;
         }
+
+        if (config.node_index < 0 || config.node_index >= config.node_count)
+        {
+            fprintf(stderr, "Invalid node configuration: index %d, count %d\n\n", config.node_index, config.node_count);
+            return false;
+        }
+
+        if (config.node_slices <= 0 || config.node_index + config.node_slices > config.node_count)
+        {
+            fprintf(
+                stderr,
+                "Invalid node slices configuration: index %d, slices %d, count %d (index + slices must be <= count)\n\n",
+                config.node_index, config.node_slices, config.node_count);
+            return false;
+        }
+
+        // convert target_val (big-endian) to target_state0 (little-endian)
+        config.target_state0 = ((target_val & 0xFF) << 24) |
+            ((target_val & 0xFF00) << 8) |
+            ((target_val & 0xFF0000) >> 8) |
+            ((target_val >> 24) & 0xFF);
+
+        return true;
     }
+};
 
-    if (target_str.length() != 8)
+int main(int argc, char** argv)
+{
+    app_config config;
+    if (!app_config::parse(argc, argv, config))
     {
-        fprintf(stderr, "Invalid target length: %s (must be 8 hex chars)\n\n", target_str.c_str());
-
         fprintf(stderr, "Press any key to exit...");
+
         (void)getchar();
-        
-        return 1;
-    }
-
-    u32 target_val = 0;
-    try
-    {
-        target_val = std::stoul(target_str, nullptr, 16);
-    }
-    catch (...)
-    {
-        fprintf(stderr, "Invalid target hex: %s\n", target_str.c_str());
-        return 1;
-    }
-
-    if (node_index < 0 || node_index >= node_count)
-    {
-        fprintf(stderr, "Invalid node configuration: index %d, count %d\n\n", node_index, node_count);
-
-        fprintf(stderr, "Press any key to exit...");
-        (void)getchar();
-
-        return 1;
-    }
-
-    if (node_slices <= 0 || node_index + node_slices > node_count)
-    {
-        fprintf(stderr, "Invalid node slices configuration: index %d, slices %d, count %d (index + slices must be <= count)\n\n", node_index, node_slices, node_count);
-
-        fprintf(stderr, "Press any key to exit...");
-        (void)getchar();
-
         return 1;
     }
 
@@ -354,14 +369,9 @@ int main(int argc, char** argv)
         fprintf(stderr, "Device %d: %s\n", i, prop.name);
     }
 
-    fprintf(stderr, "Node configuration: Index %d / %d (Slices: %d)\n", node_index, node_count, node_slices);
-    fprintf(stderr, "Target prefix: %s\n\n", target_str.c_str());
-
-    // convert target_val (big-endian) to target_state0 (little-endian)
-    const u32 target_state0 = ((target_val & 0xFF) << 24) |
-                              ((target_val & 0xFF00) << 8) |
-                              ((target_val & 0xFF0000) >> 8) |
-                              ((target_val >> 24) & 0xFF);
+    fprintf(stderr, "Node configuration: Index %d / %d (Slices: %d)\n",
+            config.node_index, config.node_count, config.node_slices);
+    fprintf(stderr, "Target prefix: %s\n\n", config.target_str.c_str());
 
     for (int i = 0; i <= player_name_max_length - 3; ++i)
     {
@@ -374,16 +384,16 @@ int main(int argc, char** argv)
         {
             constexpr int threads_per_block = 256;
 
-            threads.emplace_back([d, i, device_count, threads_per_block, node_index, node_count, node_slices, target_state0]()
+            threads.emplace_back([d, i, device_count, threads_per_block, config]()
             {
                 cudaSetDevice(d);
 
                 constexpr u32 total_global_threads = available_char_length_pow_3;
 
                 // Calculate node range
-                const u32 node_chunk_size = (total_global_threads + node_count - 1) / node_count;
-                const u32 node_start = node_index * node_chunk_size;
-                const u32 node_end = std::min(node_start + node_chunk_size * node_slices, total_global_threads);
+                const u32 node_chunk_size = (total_global_threads + config.node_count - 1) / config.node_count;
+                const u32 node_start = config.node_index * node_chunk_size;
+                const u32 node_end = std::min(node_start + node_chunk_size * config.node_slices, total_global_threads);
 
                 if (node_start >= node_end) return;
 
@@ -403,20 +413,20 @@ int main(int argc, char** argv)
                 // @formatter:off
                 switch (i)
                 {
-                case 0: kernel_md5_hash_player_name_t<0><<<blocks, threads_per_block>>>(start, target_state0); break;
-                case 1: kernel_md5_hash_player_name_t<1><<<blocks, threads_per_block>>>(start, target_state0); break;
-                case 2: kernel_md5_hash_player_name_t<2><<<blocks, threads_per_block>>>(start, target_state0); break;
-                case 3: kernel_md5_hash_player_name_t<3><<<blocks, threads_per_block>>>(start, target_state0); break;
-                case 4: kernel_md5_hash_player_name_t<4><<<blocks, threads_per_block>>>(start, target_state0); break;
-                case 5: kernel_md5_hash_player_name_t<5><<<blocks, threads_per_block>>>(start, target_state0); break;
-                case 6: kernel_md5_hash_player_name_t<6><<<blocks, threads_per_block>>>(start, target_state0); break;
-                case 7: kernel_md5_hash_player_name_t<7><<<blocks, threads_per_block>>>(start, target_state0); break;
-                case 8: kernel_md5_hash_player_name_t<8><<<blocks, threads_per_block>>>(start, target_state0); break;
-                case 9: kernel_md5_hash_player_name_t<9><<<blocks, threads_per_block>>>(start, target_state0); break;
-                case 10: kernel_md5_hash_player_name_t<10><<<blocks, threads_per_block>>>(start, target_state0); break;
-                case 11: kernel_md5_hash_player_name_t<11><<<blocks, threads_per_block>>>(start, target_state0); break;
-                case 12: kernel_md5_hash_player_name_t<12><<<blocks, threads_per_block>>>(start, target_state0); break;
-                case 13: kernel_md5_hash_player_name_t<13><<<blocks, threads_per_block>>>(start, target_state0); break;
+                case 0: kernel_md5_hash_player_name_t<0><<<blocks, threads_per_block>>>(start, config.target_state0); break;
+                case 1: kernel_md5_hash_player_name_t<1><<<blocks, threads_per_block>>>(start, config.target_state0); break;
+                case 2: kernel_md5_hash_player_name_t<2><<<blocks, threads_per_block>>>(start, config.target_state0); break;
+                case 3: kernel_md5_hash_player_name_t<3><<<blocks, threads_per_block>>>(start, config.target_state0); break;
+                case 4: kernel_md5_hash_player_name_t<4><<<blocks, threads_per_block>>>(start, config.target_state0); break;
+                case 5: kernel_md5_hash_player_name_t<5><<<blocks, threads_per_block>>>(start, config.target_state0); break;
+                case 6: kernel_md5_hash_player_name_t<6><<<blocks, threads_per_block>>>(start, config.target_state0); break;
+                case 7: kernel_md5_hash_player_name_t<7><<<blocks, threads_per_block>>>(start, config.target_state0); break;
+                case 8: kernel_md5_hash_player_name_t<8><<<blocks, threads_per_block>>>(start, config.target_state0); break;
+                case 9: kernel_md5_hash_player_name_t<9><<<blocks, threads_per_block>>>(start, config.target_state0); break;
+                case 10: kernel_md5_hash_player_name_t<10><<<blocks, threads_per_block>>>(start, config.target_state0); break;
+                case 11: kernel_md5_hash_player_name_t<11><<<blocks, threads_per_block>>>(start, config.target_state0); break;
+                case 12: kernel_md5_hash_player_name_t<12><<<blocks, threads_per_block>>>(start, config.target_state0); break;
+                case 13: kernel_md5_hash_player_name_t<13><<<blocks, threads_per_block>>>(start, config.target_state0); break;
                 default: ;
                 }
                 // @formatter:on
