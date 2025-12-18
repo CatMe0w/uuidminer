@@ -6,6 +6,7 @@
 #include <thread>
 #include <algorithm>
 #include <chrono>
+#include <string>
 
 #include "common.h"
 
@@ -263,8 +264,37 @@ __global__ void kernel_md5_hash_player_name_t(const u32 offset)
     }
 }
 
-int main()
+int main(int argc, char** argv)
 {
+    int node_index = 0;
+    int node_count = 1;
+    int node_slices = 1;
+
+    for (int i = 1; i < argc; ++i)
+    {
+        std::string arg = argv[i];
+        if (arg == "--node-index" && i + 1 < argc)
+        {
+            node_index = std::stoi(argv[++i]);
+        }
+        else if (arg == "--node-count" && i + 1 < argc)
+        {
+            node_count = std::stoi(argv[++i]);
+        }
+        else if (arg == "--node-slices" && i + 1 < argc)
+        {
+            node_slices = std::stoi(argv[++i]);
+        }
+    }
+
+    if (node_index < 0 || node_index >= node_count)
+    {
+        fprintf(stderr, "Invalid node configuration: index %d, count %d\n", node_index, node_count);
+        return 1;
+    }
+
+    fprintf(stderr, "Node configuration: Index %d / %d (Slices: %d)\n", node_index, node_count, node_slices);
+
     int device_count = 0;
     cudaGetDeviceCount(&device_count);
 
@@ -298,18 +328,30 @@ int main()
         {
             constexpr int threads_per_block = 256;
 
-            threads.emplace_back([d, i, device_count, threads_per_block]()
+            threads.emplace_back([d, i, device_count, threads_per_block, node_index, node_count, node_slices]()
             {
                 cudaSetDevice(d);
 
-                constexpr u32 total_threads = available_char_length_pow_3;
-                const u32 chunk_size = (total_threads + device_count - 1) / device_count;
-                const u32 start = d * chunk_size;
-                const u32 end = std::min(start + chunk_size, total_threads);
+                constexpr u32 total_global_threads = available_char_length_pow_3;
 
-                if (start >= end) return;
+                // Calculate node range
+                const u32 node_chunk_size = (total_global_threads + node_count - 1) / node_count;
+                const u32 node_start = node_index * node_chunk_size;
+                const u32 node_end = std::min(node_start + node_chunk_size * node_slices, total_global_threads);
 
-                const u32 count = end - start;
+                if (node_start >= node_end) return;
+
+                const u32 node_total_threads = node_end - node_start;
+
+                // Calculate device range within node
+                const u32 device_chunk_size = (node_total_threads + device_count - 1) / device_count;
+                const u32 device_start_offset = d * device_chunk_size;
+                const u32 device_end_offset = std::min(device_start_offset + device_chunk_size, node_total_threads);
+
+                if (device_start_offset >= device_end_offset) return;
+
+                const u32 start = node_start + device_start_offset;
+                const u32 count = device_end_offset - device_start_offset;
                 const int blocks = (count + threads_per_block - 1) / threads_per_block;
 
                 // @formatter:off
