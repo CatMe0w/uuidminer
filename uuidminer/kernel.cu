@@ -2,6 +2,10 @@
 #include "device_launch_parameters.h"
 
 #include <cstdio>
+#include <vector>
+#include <thread>
+#include <algorithm>
+#include <chrono>
 
 #include "common.h"
 
@@ -129,9 +133,9 @@ __device__ __forceinline__ void md5_transform(u32 state[4], const u32 data[16])
 }
 
 template <int Length>
-__global__ void kernel_md5_hash_player_name_t()
+__global__ void kernel_md5_hash_player_name_t(const u32 offset)
 {
-    const u32 thread = blockIdx.x * blockDim.x + threadIdx.x;
+    const u32 thread = blockIdx.x * blockDim.x + threadIdx.x + offset;
     if (thread >= available_char_length_pow_3)
     {
         return;
@@ -146,10 +150,10 @@ __global__ void kernel_md5_hash_player_name_t()
     const u8 byte_c = available_chars[byte_c_idx];
 
     // in_traversal_part is a base 63 integer as the index of available_chars
-    u8 in_traversal_part[Length > 0 ? Length : 1] = {0};
+    u8 in_traversal_part[Length > 0 ? Length : 1] = {};
 
     // prepare MD5 block
-    u32 block[16] = {0};
+    u32 block[16] = {};
 
     // pre-fill constant parts
     // "OfflinePlayer:" -> 14 bytes
@@ -200,8 +204,10 @@ __global__ void kernel_md5_hash_player_name_t()
             {
                 const int p = w * 4 + b;
                 u8 val;
-                if (p < 14) val = player_name_prefix[p]; // prefix; filling "r:" here since "OfflinePlaye" is filled above
-                else if (p < 14 + Length) val = available_chars[in_traversal_part[p - 14]]; // "variable" part of playername
+                if (p < 14) val = player_name_prefix[p];
+                    // prefix; filling "r:" here since "OfflinePlaye" is filled above
+                else if (p < 14 + Length) val = available_chars[in_traversal_part[p - 14]];
+                    // "variable" part of playername
                 else if (p == 14 + Length) val = byte_a;
                 else if (p == 14 + Length + 1) val = byte_b;
                 else if (p == 14 + Length + 2) val = byte_c;
@@ -259,71 +265,87 @@ __global__ void kernel_md5_hash_player_name_t()
 
 int main()
 {
-    // 250112 threads (250047 used), 977 blocks
-    constexpr int thread = 256;
-    constexpr int block = (available_char_length_pow_3 + thread - 1) / thread;
+    int device_count = 0;
+    cudaGetDeviceCount(&device_count);
+
+    if (device_count == 0)
+    {
+        fprintf(stderr, "No CUDA devices found!\n");
+
+        fprintf(stderr, "Press any key to exit...");
+        (void)getchar();
+
+        return 1;
+    }
+
+    fprintf(stderr, "Found %d CUDA devices:\n", device_count);
+    for (int i = 0; i < device_count; ++i)
+    {
+        cudaDeviceProp prop;
+        cudaGetDeviceProperties(&prop, i);
+        fprintf(stderr, "Device %d: %s\n", i, prop.name);
+    }
+    fprintf(stderr, "\n");
 
     for (int i = 0; i <= player_name_max_length - 3; ++i)
     {
         fprintf(stderr, "Searching %d-character player names...\n", i + 3);
 
-        // measure time
-        cudaEvent_t start, stop;
-        cudaEventCreate(&start);
-        cudaEventCreate(&stop);
-        cudaEventRecord(start);
+        auto start_time = std::chrono::high_resolution_clock::now();
 
-        // launch kernel
-        switch (i)
+        std::vector<std::thread> threads;
+        for (int d = 0; d < device_count; ++d)
         {
-        case 0: kernel_md5_hash_player_name_t<0><<<block, thread>>>();
-            break;
-        case 1: kernel_md5_hash_player_name_t<1><<<block, thread>>>();
-            break;
-        case 2: kernel_md5_hash_player_name_t<2><<<block, thread>>>();
-            break;
-        case 3: kernel_md5_hash_player_name_t<3><<<block, thread>>>();
-            break;
-        case 4: kernel_md5_hash_player_name_t<4><<<block, thread>>>();
-            break;
-        case 5: kernel_md5_hash_player_name_t<5><<<block, thread>>>();
-            break;
-        case 6: kernel_md5_hash_player_name_t<6><<<block, thread>>>();
-            break;
-        case 7: kernel_md5_hash_player_name_t<7><<<block, thread>>>();
-            break;
-        case 8: kernel_md5_hash_player_name_t<8><<<block, thread>>>();
-            break;
-        case 9: kernel_md5_hash_player_name_t<9><<<block, thread>>>();
-            break;
-        case 10: kernel_md5_hash_player_name_t<10><<<block, thread>>>();
-            break;
-        case 11: kernel_md5_hash_player_name_t<11><<<block, thread>>>();
-            break;
-        case 12: kernel_md5_hash_player_name_t<12><<<block, thread>>>();
-            break;
-        case 13: kernel_md5_hash_player_name_t<13><<<block, thread>>>();
-            break;
-        default: ;
+            constexpr int threads_per_block = 256;
+
+            threads.emplace_back([d, i, device_count, threads_per_block]()
+            {
+                cudaSetDevice(d);
+
+                constexpr u32 total_threads = available_char_length_pow_3;
+                const u32 chunk_size = (total_threads + device_count - 1) / device_count;
+                const u32 start = d * chunk_size;
+                const u32 end = std::min(start + chunk_size, total_threads);
+
+                if (start >= end) return;
+
+                const u32 count = end - start;
+                const int blocks = (count + threads_per_block - 1) / threads_per_block;
+
+                // @formatter:off
+                switch (i)
+                {
+                case 0: kernel_md5_hash_player_name_t<0><<<blocks, threads_per_block>>>(start); break;
+                case 1: kernel_md5_hash_player_name_t<1><<<blocks, threads_per_block>>>(start); break;
+                case 2: kernel_md5_hash_player_name_t<2><<<blocks, threads_per_block>>>(start); break;
+                case 3: kernel_md5_hash_player_name_t<3><<<blocks, threads_per_block>>>(start); break;
+                case 4: kernel_md5_hash_player_name_t<4><<<blocks, threads_per_block>>>(start); break;
+                case 5: kernel_md5_hash_player_name_t<5><<<blocks, threads_per_block>>>(start); break;
+                case 6: kernel_md5_hash_player_name_t<6><<<blocks, threads_per_block>>>(start); break;
+                case 7: kernel_md5_hash_player_name_t<7><<<blocks, threads_per_block>>>(start); break;
+                case 8: kernel_md5_hash_player_name_t<8><<<blocks, threads_per_block>>>(start); break;
+                case 9: kernel_md5_hash_player_name_t<9><<<blocks, threads_per_block>>>(start); break;
+                case 10: kernel_md5_hash_player_name_t<10><<<blocks, threads_per_block>>>(start); break;
+                case 11: kernel_md5_hash_player_name_t<11><<<blocks, threads_per_block>>>(start); break;
+                case 12: kernel_md5_hash_player_name_t<12><<<blocks, threads_per_block>>>(start); break;
+                case 13: kernel_md5_hash_player_name_t<13><<<blocks, threads_per_block>>>(start); break;
+                default: ;
+                }
+                // @formatter:on
+
+                cudaDeviceSynchronize();
+            });
         }
 
-        cudaDeviceSynchronize();
-
-        // measure time
-        cudaEventRecord(stop);
-        cudaEventSynchronize(stop);
-        float milliseconds = 0;
-        cudaEventElapsedTime(&milliseconds, start, stop);
-        cudaEventDestroy(start);
-        cudaEventDestroy(stop);
-
-        const cudaError_t error = cudaGetLastError();
-        if (error != cudaSuccess)
+        for (auto& t : threads)
         {
-            fprintf(stderr, "Error kernel_md5_hash_player_name: %s \n", cudaGetErrorString(error));
+            if (t.joinable()) t.join();
         }
 
-        fprintf(stderr, "Time elapsed: %.3f s\n\n", milliseconds / 1000.0f);
+        auto end_time = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double> elapsed = end_time - start_time;
+
+        fprintf(stderr, "Time elapsed: %.3f s\n\n", elapsed.count());
     }
 
     fprintf(stderr, "Press any key to exit...");
