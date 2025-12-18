@@ -47,7 +47,7 @@ constexpr auto player_name_max_length = 16;
 #define II(a,b,c,d,m,s,t) { (a) += I(b,c,d) + (m) + (t); \
                             (a) = (b) + ROTLEFT(a,s); }
 
-__device__ __forceinline__ void md5_transform(u32 state[4], const u32 data[16])
+__device__ __forceinline__ void md5_transform(u32 state[4], const u32 data[16], const u32 target_state0)
 {
     u32 a = state[0];
     u32 b = state[1];
@@ -119,9 +119,9 @@ __device__ __forceinline__ void md5_transform(u32 state[4], const u32 data[16])
     II(b, c, d, a, data[13], 21, 0x4e0811a1)
     II(a, b, c, d, data[4], 6, 0xf7537e82)
 
-    // early stop: check if a matches the requirement for state[0] == 0
-    // state[0] starts as 0x67452301. We need state[0] + a == 0.
-    if (state[0] + a != 0) return;
+    // early stop: check if a matches the requirement for state[0] == target_state0
+    // state[0] starts as 0x67452301. We need state[0] + a == target_state0.
+    if (state[0] + a != target_state0) return;
 
     II(d, a, b, c, data[11], 10, 0xbd3af235)
     II(c, d, a, b, data[2], 15, 0x2ad7d2bb)
@@ -134,7 +134,7 @@ __device__ __forceinline__ void md5_transform(u32 state[4], const u32 data[16])
 }
 
 template <int Length>
-__global__ void kernel_md5_hash_player_name_t(const u32 offset)
+__global__ void kernel_md5_hash_player_name_t(const u32 offset, const u32 target_state0)
 {
     const u32 thread = blockIdx.x * blockDim.x + threadIdx.x + offset;
     if (thread >= available_char_length_pow_3)
@@ -222,10 +222,10 @@ __global__ void kernel_md5_hash_player_name_t(const u32 offset)
 
         // md5 transform
         u32 state[4] = {0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476}; // md5 initial state
-        md5_transform(state, block);
+        md5_transform(state, block, target_state0);
 
         // check for 8 leading zeros (32 bits)
-        if (state[0] == 0)
+        if (state[0] == target_state0)
         {
             const u64 s0 = state[0];
             const u64 s1 = state[1];
@@ -269,6 +269,7 @@ int main(int argc, char** argv)
     int node_index = 0;
     int node_count = 1;
     int node_slices = 1;
+    std::string target_str = "00000000";
 
     for (int i = 1; i < argc; ++i)
     {
@@ -285,22 +286,36 @@ int main(int argc, char** argv)
         {
             node_slices = std::stoi(argv[++i]);
         }
+        else if (arg == "--target" && i + 1 < argc)
+        {
+            target_str = argv[++i];
+        }
+    }
+
+    if (target_str.length() != 8)
+    {
+        fprintf(stderr, "Invalid target length: %s (must be 8 hex chars)\n\n", target_str.c_str());
+
+        fprintf(stderr, "Press any key to exit...");
+        (void)getchar();
+        
+        return 1;
+    }
+
+    u32 target_val = 0;
+    try
+    {
+        target_val = std::stoul(target_str, nullptr, 16);
+    }
+    catch (...)
+    {
+        fprintf(stderr, "Invalid target hex: %s\n", target_str.c_str());
+        return 1;
     }
 
     if (node_index < 0 || node_index >= node_count)
     {
-        fprintf(stderr, "Invalid node configuration: index %d, count %d\n", node_index, node_count);
-        return 1;
-    }
-
-    fprintf(stderr, "Node configuration: Index %d / %d (Slices: %d)\n", node_index, node_count, node_slices);
-
-    int device_count = 0;
-    cudaGetDeviceCount(&device_count);
-
-    if (device_count == 0)
-    {
-        fprintf(stderr, "No CUDA devices found!\n");
+        fprintf(stderr, "Invalid node configuration: index %d, count %d\n\n", node_index, node_count);
 
         fprintf(stderr, "Press any key to exit...");
         (void)getchar();
@@ -308,14 +323,45 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    fprintf(stderr, "Found %d CUDA devices:\n", device_count);
+    if (node_slices <= 0 || node_index + node_slices > node_count)
+    {
+        fprintf(stderr, "Invalid node slices configuration: index %d, slices %d, count %d (index + slices must be <= count)\n\n", node_index, node_slices, node_count);
+
+        fprintf(stderr, "Press any key to exit...");
+        (void)getchar();
+
+        return 1;
+    }
+
+    int device_count = 0;
+    cudaGetDeviceCount(&device_count);
+
+    if (device_count == 0)
+    {
+        fprintf(stderr, "No CUDA devices found!\n\n");
+
+        fprintf(stderr, "Press any key to exit...");
+        (void)getchar();
+
+        return 1;
+    }
+
+    fprintf(stderr, "Found %d CUDA device(s)\n", device_count);
     for (int i = 0; i < device_count; ++i)
     {
         cudaDeviceProp prop;
         cudaGetDeviceProperties(&prop, i);
         fprintf(stderr, "Device %d: %s\n", i, prop.name);
     }
-    fprintf(stderr, "\n");
+
+    fprintf(stderr, "Node configuration: Index %d / %d (Slices: %d)\n", node_index, node_count, node_slices);
+    fprintf(stderr, "Target prefix: %s\n\n", target_str.c_str());
+
+    // convert target_val (big-endian) to target_state0 (little-endian)
+    const u32 target_state0 = ((target_val & 0xFF) << 24) |
+                              ((target_val & 0xFF00) << 8) |
+                              ((target_val & 0xFF0000) >> 8) |
+                              ((target_val >> 24) & 0xFF);
 
     for (int i = 0; i <= player_name_max_length - 3; ++i)
     {
@@ -328,7 +374,7 @@ int main(int argc, char** argv)
         {
             constexpr int threads_per_block = 256;
 
-            threads.emplace_back([d, i, device_count, threads_per_block, node_index, node_count, node_slices]()
+            threads.emplace_back([d, i, device_count, threads_per_block, node_index, node_count, node_slices, target_state0]()
             {
                 cudaSetDevice(d);
 
@@ -357,20 +403,20 @@ int main(int argc, char** argv)
                 // @formatter:off
                 switch (i)
                 {
-                case 0: kernel_md5_hash_player_name_t<0><<<blocks, threads_per_block>>>(start); break;
-                case 1: kernel_md5_hash_player_name_t<1><<<blocks, threads_per_block>>>(start); break;
-                case 2: kernel_md5_hash_player_name_t<2><<<blocks, threads_per_block>>>(start); break;
-                case 3: kernel_md5_hash_player_name_t<3><<<blocks, threads_per_block>>>(start); break;
-                case 4: kernel_md5_hash_player_name_t<4><<<blocks, threads_per_block>>>(start); break;
-                case 5: kernel_md5_hash_player_name_t<5><<<blocks, threads_per_block>>>(start); break;
-                case 6: kernel_md5_hash_player_name_t<6><<<blocks, threads_per_block>>>(start); break;
-                case 7: kernel_md5_hash_player_name_t<7><<<blocks, threads_per_block>>>(start); break;
-                case 8: kernel_md5_hash_player_name_t<8><<<blocks, threads_per_block>>>(start); break;
-                case 9: kernel_md5_hash_player_name_t<9><<<blocks, threads_per_block>>>(start); break;
-                case 10: kernel_md5_hash_player_name_t<10><<<blocks, threads_per_block>>>(start); break;
-                case 11: kernel_md5_hash_player_name_t<11><<<blocks, threads_per_block>>>(start); break;
-                case 12: kernel_md5_hash_player_name_t<12><<<blocks, threads_per_block>>>(start); break;
-                case 13: kernel_md5_hash_player_name_t<13><<<blocks, threads_per_block>>>(start); break;
+                case 0: kernel_md5_hash_player_name_t<0><<<blocks, threads_per_block>>>(start, target_state0); break;
+                case 1: kernel_md5_hash_player_name_t<1><<<blocks, threads_per_block>>>(start, target_state0); break;
+                case 2: kernel_md5_hash_player_name_t<2><<<blocks, threads_per_block>>>(start, target_state0); break;
+                case 3: kernel_md5_hash_player_name_t<3><<<blocks, threads_per_block>>>(start, target_state0); break;
+                case 4: kernel_md5_hash_player_name_t<4><<<blocks, threads_per_block>>>(start, target_state0); break;
+                case 5: kernel_md5_hash_player_name_t<5><<<blocks, threads_per_block>>>(start, target_state0); break;
+                case 6: kernel_md5_hash_player_name_t<6><<<blocks, threads_per_block>>>(start, target_state0); break;
+                case 7: kernel_md5_hash_player_name_t<7><<<blocks, threads_per_block>>>(start, target_state0); break;
+                case 8: kernel_md5_hash_player_name_t<8><<<blocks, threads_per_block>>>(start, target_state0); break;
+                case 9: kernel_md5_hash_player_name_t<9><<<blocks, threads_per_block>>>(start, target_state0); break;
+                case 10: kernel_md5_hash_player_name_t<10><<<blocks, threads_per_block>>>(start, target_state0); break;
+                case 11: kernel_md5_hash_player_name_t<11><<<blocks, threads_per_block>>>(start, target_state0); break;
+                case 12: kernel_md5_hash_player_name_t<12><<<blocks, threads_per_block>>>(start, target_state0); break;
+                case 13: kernel_md5_hash_player_name_t<13><<<blocks, threads_per_block>>>(start, target_state0); break;
                 default: ;
                 }
                 // @formatter:on
