@@ -16,7 +16,7 @@ Now, uuidminer is a general-purpose offline player UUID searcher, no longer limi
 
 ## Features
 
-The program enumerates the legal Minecraft player name character set (excluding Chinese player names), i.e., 0-9, a-z, A-Z, and \_, totaling 63 characters. It searches for player names with lengths from 3 to 16. Each candidate name is mapped to its corresponding offline mode UUID and matched against the user-specified target prefix.
+The program enumerates the legal Minecraft player name character set (excluding CJK player names), i.e., 0-9, a-z, A-Z, and \_, totaling 63 characters. It searches for player names with lengths from 3 to 16. Each candidate name is mapped to its corresponding offline mode UUID and matched against the user-specified target prefix.
 
 The program supports multi-GPU and multi-node parallel execution.
 
