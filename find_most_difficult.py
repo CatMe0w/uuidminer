@@ -9,9 +9,9 @@ def analyze_results(filename):
         print(f"Error: File '{filename}' not found.")
         return
 
-    # dictionary to store the best result for each length
+    # dictionary to store the best results for each length
     # key: length (int)
-    # value: (uuid_int, uuid_str, username)
+    # value: list of (uuid_int, uuid_str, username)
     best_results = {}
 
     print(f"Reading {filename}...")
@@ -34,11 +34,9 @@ def analyze_results(filename):
                     uuid_int = uuid_val.int
 
                     if length not in best_results:
-                        best_results[length] = (uuid_int, uuid_str, full_name)
-                    else:
-                        current_min_int, _, _ = best_results[length]
-                        if uuid_int < current_min_int:
-                            best_results[length] = (uuid_int, uuid_str, full_name)
+                        best_results[length] = []
+                    
+                    best_results[length].append((uuid_int, uuid_str, full_name))
 
                 except ValueError:
                     print(f"Skipping invalid UUID: {uuid_str}")
@@ -48,6 +46,11 @@ def analyze_results(filename):
         print(f"Error reading file: {e}")
         return
 
+    # sort and keep top 10 for each length
+    for length in best_results:
+        best_results[length].sort(key=lambda x: x[0])
+        best_results[length] = best_results[length][:10]
+
     print("\n" + "=" * 64)
     print(f"{'Length':<6} | {'Username':<16} | {'UUID'}")
     print("=" * 64)
@@ -55,8 +58,9 @@ def analyze_results(filename):
     sorted_lengths = sorted(best_results.keys())
 
     for length in sorted_lengths:
-        _, uuid_str, full_name = best_results[length]
-        print(f"{length:<6} | {full_name:<16} | {uuid_str}")
+        print(f"--- Length {length} ---")
+        for _, uuid_str, full_name in best_results[length]:
+            print(f"{length:<6} | {full_name:<16} | {uuid_str}")
 
     print("=" * 64)
 
