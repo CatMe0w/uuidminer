@@ -1,3 +1,4 @@
+#include "../../common/common.h"
 #include "opencl_backend.h"
 #include <cstdio>
 #include <fstream>
@@ -8,8 +9,6 @@
 #include <chrono>
 #include <algorithm>
 #include <cmath>
-
-#include "../../common/common.h"
 
 // constants from cuda kernel
 constexpr auto available_char_length = 63;

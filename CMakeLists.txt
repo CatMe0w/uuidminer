@@ -1,17 +1,23 @@
 cmake_minimum_required(VERSION 3.18)
 
-project(uuidminer LANGUAGES CXX CUDA)
+if(APPLE)
+    option(USE_CUDA "Enable CUDA support" OFF)
+else()
+    option(USE_CUDA "Enable CUDA support" ON)
+endif()
+option(USE_OPENCL "Enable OpenCL support" ON)
+
+if(USE_CUDA)
+    project(uuidminer LANGUAGES CXX CUDA)
+else()
+    project(uuidminer LANGUAGES CXX)
+endif()
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-option(USE_CUDA "Enable CUDA support" ON)
-option(USE_OPENCL "Enable OpenCL support" ON)
-
-# Source files
 set(SOURCES
     src/main.cpp
-    src/backends/opencl/opencl_backend.cpp
 )
 
 if(USE_CUDA)
@@ -24,6 +30,9 @@ endif()
 
 if(USE_OPENCL)
     find_package(OpenCL REQUIRED)
+    list(APPEND SOURCES
+        src/backends/opencl/opencl_backend.cpp
+    )
     add_compile_definitions(USE_OPENCL)
 endif()
 

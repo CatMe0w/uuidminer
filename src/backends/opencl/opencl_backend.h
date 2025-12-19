@@ -6,7 +6,11 @@
 #include <string>
 
 #ifdef USE_OPENCL
+#if defined(__APPLE__)
+#include <OpenCL/cl.h>
+#else
 #include <CL/cl.h>
+#endif
 #endif
 
 class OpenCLBackend : public IBackend {
