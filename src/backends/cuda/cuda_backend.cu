@@ -1,5 +1,5 @@
-#include "cuda_runtime.h"
-#include "device_launch_parameters.h"
+#include "../../common/common.h"
+#include "cuda_backend.h"
 
 #include <cstdio>
 #include <vector>
@@ -8,8 +8,12 @@
 #include <chrono>
 #include <string>
 
-#include "common.h"
+#ifdef USE_CUDA
+#include "cuda_runtime.h"
+#include "device_launch_parameters.h"
+#endif
 
+#ifdef USE_CUDA
 __constant__ u8 player_name_prefix[] = {
     'O', 'f', 'f', 'l', 'i', 'n', 'e', 'P', 'l', 'a', 'y', 'e', 'r', ':'
 };
@@ -170,9 +174,10 @@ __global__ void kernel_md5_hash_player_name_t(const u32 offset, const u32 target
     block[15] = static_cast<u32>(bitlen >> 32);
 
     // iterate through all possible player names with (length + 3) characters
-    const int thread_max_iteration_count = pow(available_char_length, Length);
-
+    int thread_max_iteration_count = 1;
 #pragma unroll
+    for (int _ = 0; _ < Length; ++_) thread_max_iteration_count *= available_char_length;
+
     for (int _ = 0; _ < thread_max_iteration_count; ++_)
     {
         // add 1 to in_traversal_part
@@ -263,105 +268,29 @@ __global__ void kernel_md5_hash_player_name_t(const u32 offset, const u32 target
         }
     }
 }
+#endif // USE_CUDA
 
-struct app_config
+CudaBackend::CudaBackend() = default;
+CudaBackend::~CudaBackend() = default;
+
+bool CudaBackend::init(const Config& config)
 {
-    int node_index = 0;
-    int node_count = 1;
-    int node_slices = 1;
-    std::string target_str = "00000000";
-    u32 target_state0 = 0;
+    m_config = config;
 
-    static bool parse(const int argc, char** argv, app_config& config)
-    {
-        for (int i = 1; i < argc; ++i)
-        {
-            std::string arg = argv[i];
-            if (arg == "--node-index" && i + 1 < argc)
-            {
-                config.node_index = std::stoi(argv[++i]);
-            }
-            else if (arg == "--node-count" && i + 1 < argc)
-            {
-                config.node_count = std::stoi(argv[++i]);
-            }
-            else if (arg == "--node-slices" && i + 1 < argc)
-            {
-                config.node_slices = std::stoi(argv[++i]);
-            }
-            else if (arg == "--target" && i + 1 < argc)
-            {
-                config.target_str = argv[++i];
-            }
-        }
-
-        if (config.target_str.length() != 8)
-        {
-            fprintf(stderr, "Invalid target length: %s (must be 8 hex chars)\n\n", config.target_str.c_str());
-            return false;
-        }
-
-        u32 target_val;
-        try
-        {
-            target_val = std::stoul(config.target_str, nullptr, 16);
-        }
-        catch (...)
-        {
-            fprintf(stderr, "Invalid target hex: %s\n", config.target_str.c_str());
-            return false;
-        }
-
-        if (config.node_index < 0 || config.node_index >= config.node_count)
-        {
-            fprintf(stderr, "Invalid node configuration: index %d, count %d\n\n", config.node_index, config.node_count);
-            return false;
-        }
-
-        if (config.node_slices <= 0 || config.node_index + config.node_slices > config.node_count)
-        {
-            fprintf(
-                stderr,
-                "Invalid node slices configuration: index %d, slices %d, count %d (index + slices must be <= count)\n\n",
-                config.node_index, config.node_slices, config.node_count);
-            return false;
-        }
-
-        // convert target_val (big-endian) to target_state0 (little-endian)
-        config.target_state0 = ((target_val & 0xFF) << 24) |
-            ((target_val & 0xFF00) << 8) |
-            ((target_val & 0xFF0000) >> 8) |
-            ((target_val >> 24) & 0xFF);
-
-        return true;
-    }
-};
-
-int main(int argc, char** argv)
-{
-    app_config config;
-    if (!app_config::parse(argc, argv, config))
-    {
-        fprintf(stderr, "Press any key to exit...");
-        (void)getchar();
-        return 1;
-    }
-
-    int device_count = 0;
-    cudaError_t error_id = cudaGetDeviceCount(&device_count);
+#ifndef USE_CUDA
+    fprintf(stderr, "CUDA support not compiled in.\n");
+    return false;
+#else
+    cudaError_t error_id = cudaGetDeviceCount(&m_device_count);
 
     if (error_id != cudaSuccess)
     {
         fprintf(stderr, "CUDA error: %s\n", cudaGetErrorString(error_id));
-
-        fprintf(stderr, "Press any key to exit...");
-        (void)getchar();
-
-        return 1;
+        return false;
     }
 
-    fprintf(stderr, "Found %d CUDA device(s)\n", device_count);
-    for (int i = 0; i < device_count; ++i)
+    fprintf(stderr, "Found %d CUDA device(s)\n", m_device_count);
+    for (int i = 0; i < m_device_count; ++i)
     {
         cudaDeviceProp prop;
         cudaGetDeviceProperties(&prop, i);
@@ -369,9 +298,16 @@ int main(int argc, char** argv)
     }
 
     fprintf(stderr, "Node configuration: Index %d / %d (Slices: %d)\n",
-            config.node_index, config.node_count, config.node_slices);
-    fprintf(stderr, "Target prefix: %s\n\n", config.target_str.c_str());
+            m_config.node_index, m_config.node_count, m_config.node_slices);
+    fprintf(stderr, "Target prefix: %s\n\n", m_config.target_str.c_str());
 
+    return true;
+#endif
+}
+
+void CudaBackend::run()
+{
+#ifdef USE_CUDA
     for (int i = 0; i <= player_name_max_length - 3; ++i)
     {
         fprintf(stderr, "Searching %d-character player names...\n", i + 3);
@@ -379,27 +315,27 @@ int main(int argc, char** argv)
         auto start_time = std::chrono::high_resolution_clock::now();
 
         std::vector<std::thread> threads;
-        for (int d = 0; d < device_count; ++d)
+        for (int d = 0; d < m_device_count; ++d)
         {
             constexpr int threads_per_block = 256;
 
-            threads.emplace_back([d, i, device_count, threads_per_block, config]()
+            threads.emplace_back([d, i, this, threads_per_block]()
             {
                 cudaSetDevice(d);
 
                 constexpr u32 total_global_threads = available_char_length_pow_3;
 
                 // Calculate node range
-                const u32 node_chunk_size = (total_global_threads + config.node_count - 1) / config.node_count;
-                const u32 node_start = config.node_index * node_chunk_size;
-                const u32 node_end = std::min(node_start + node_chunk_size * config.node_slices, total_global_threads);
+                const u32 node_chunk_size = (total_global_threads + m_config.node_count - 1) / m_config.node_count;
+                const u32 node_start = m_config.node_index * node_chunk_size;
+                const u32 node_end = std::min(node_start + node_chunk_size * m_config.node_slices, total_global_threads);
 
                 if (node_start >= node_end) return;
 
                 const u32 node_total_threads = node_end - node_start;
 
                 // Calculate device range within node
-                const u32 device_chunk_size = (node_total_threads + device_count - 1) / device_count;
+                const u32 device_chunk_size = (node_total_threads + m_device_count - 1) / m_device_count;
                 const u32 device_start_offset = d * device_chunk_size;
                 const u32 device_end_offset = std::min(device_start_offset + device_chunk_size, node_total_threads);
 
@@ -412,20 +348,20 @@ int main(int argc, char** argv)
                 // @formatter:off
                 switch (i)
                 {
-                case 0: kernel_md5_hash_player_name_t<0><<<blocks, threads_per_block>>>(start, config.target_state0); break;
-                case 1: kernel_md5_hash_player_name_t<1><<<blocks, threads_per_block>>>(start, config.target_state0); break;
-                case 2: kernel_md5_hash_player_name_t<2><<<blocks, threads_per_block>>>(start, config.target_state0); break;
-                case 3: kernel_md5_hash_player_name_t<3><<<blocks, threads_per_block>>>(start, config.target_state0); break;
-                case 4: kernel_md5_hash_player_name_t<4><<<blocks, threads_per_block>>>(start, config.target_state0); break;
-                case 5: kernel_md5_hash_player_name_t<5><<<blocks, threads_per_block>>>(start, config.target_state0); break;
-                case 6: kernel_md5_hash_player_name_t<6><<<blocks, threads_per_block>>>(start, config.target_state0); break;
-                case 7: kernel_md5_hash_player_name_t<7><<<blocks, threads_per_block>>>(start, config.target_state0); break;
-                case 8: kernel_md5_hash_player_name_t<8><<<blocks, threads_per_block>>>(start, config.target_state0); break;
-                case 9: kernel_md5_hash_player_name_t<9><<<blocks, threads_per_block>>>(start, config.target_state0); break;
-                case 10: kernel_md5_hash_player_name_t<10><<<blocks, threads_per_block>>>(start, config.target_state0); break;
-                case 11: kernel_md5_hash_player_name_t<11><<<blocks, threads_per_block>>>(start, config.target_state0); break;
-                case 12: kernel_md5_hash_player_name_t<12><<<blocks, threads_per_block>>>(start, config.target_state0); break;
-                case 13: kernel_md5_hash_player_name_t<13><<<blocks, threads_per_block>>>(start, config.target_state0); break;
+                case 0: kernel_md5_hash_player_name_t<0><<<blocks, threads_per_block>>>(start, m_config.target_state0); break;
+                case 1: kernel_md5_hash_player_name_t<1><<<blocks, threads_per_block>>>(start, m_config.target_state0); break;
+                case 2: kernel_md5_hash_player_name_t<2><<<blocks, threads_per_block>>>(start, m_config.target_state0); break;
+                case 3: kernel_md5_hash_player_name_t<3><<<blocks, threads_per_block>>>(start, m_config.target_state0); break;
+                case 4: kernel_md5_hash_player_name_t<4><<<blocks, threads_per_block>>>(start, m_config.target_state0); break;
+                case 5: kernel_md5_hash_player_name_t<5><<<blocks, threads_per_block>>>(start, m_config.target_state0); break;
+                case 6: kernel_md5_hash_player_name_t<6><<<blocks, threads_per_block>>>(start, m_config.target_state0); break;
+                case 7: kernel_md5_hash_player_name_t<7><<<blocks, threads_per_block>>>(start, m_config.target_state0); break;
+                case 8: kernel_md5_hash_player_name_t<8><<<blocks, threads_per_block>>>(start, m_config.target_state0); break;
+                case 9: kernel_md5_hash_player_name_t<9><<<blocks, threads_per_block>>>(start, m_config.target_state0); break;
+                case 10: kernel_md5_hash_player_name_t<10><<<blocks, threads_per_block>>>(start, m_config.target_state0); break;
+                case 11: kernel_md5_hash_player_name_t<11><<<blocks, threads_per_block>>>(start, m_config.target_state0); break;
+                case 12: kernel_md5_hash_player_name_t<12><<<blocks, threads_per_block>>>(start, m_config.target_state0); break;
+                case 13: kernel_md5_hash_player_name_t<13><<<blocks, threads_per_block>>>(start, m_config.target_state0); break;
                 default: ;
                 }
                 // @formatter:on
@@ -444,9 +380,5 @@ int main(int argc, char** argv)
 
         fprintf(stderr, "Time elapsed: %.3f s\n\n", elapsed.count());
     }
-
-    fprintf(stderr, "Press any key to exit...");
-    (void)getchar();
-
-    return 0;
+#endif
 }
