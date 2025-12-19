@@ -343,17 +343,16 @@ int main(int argc, char** argv)
     if (!app_config::parse(argc, argv, config))
     {
         fprintf(stderr, "Press any key to exit...");
-
         (void)getchar();
         return 1;
     }
 
     int device_count = 0;
-    cudaGetDeviceCount(&device_count);
+    cudaError_t error_id = cudaGetDeviceCount(&device_count);
 
-    if (device_count == 0)
+    if (error_id != cudaSuccess)
     {
-        fprintf(stderr, "No CUDA devices found!\n\n");
+        fprintf(stderr, "CUDA error: %s\n", cudaGetErrorString(error_id));
 
         fprintf(stderr, "Press any key to exit...");
         (void)getchar();
