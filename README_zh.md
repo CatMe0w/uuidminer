@@ -1,66 +1,66 @@
 # uuidminer
 
-中文版请见[这里](https://github.com/CatMe0w/uuidminer/blob/master/README_zh.md)。
+uuidminer 是一个基于 CUDA 的高性能搜索工具，用于寻找满足特定前缀的，离线模式 Minecraft 玩家名所对应的 UUID。
 
-uuidminer is a high-performance CUDA-based search tool designed to find offline-mode Minecraft player names that correspond to UUIDs with specific prefixes.
+在离线模式中，玩家 UUID 由字符串 `OfflinePlayer:[玩家名]` 的 MD5 哈希确定，并按照 UUID v3 规则设置版本位与变体位。注意到，玩家名空间可被视为一个可枚举的搜索空间。基于这一性质，本项目对玩家名进行并行搜索，筛选出 UUID 高位具有特定模式的结果。
 
-In offline mode, a player's UUID is determined by the MD5 hash of the string `OfflinePlayer:[playername]`, with the version and variant bits set according to UUID v3 rules. Since the player name space can be viewed as an enumerable search space, this project performs a parallel search on player names to filter out results where the UUID high bits match a specific pattern.
+## 项目动机与演变
 
-## Motivation & Evolution
+这个项目最初只是一个玩笑：如果把玩家 UUID 当作类似比特币区块哈希的结果，是否可以定义一种“名字难度”，并找出最“困难”的玩家名。
 
-This project started as a joke: if we treat player UUIDs like Bitcoin block hashes, could we define a "name difficulty" and find the "most difficult" player name?
+后来，这个想法逐渐变得更实用：程序性能提升到超越 hashcat，同时，搜索目标不再局限于前导零数量，而允许用户指定任意目标 UUID 前缀，例如十六进制字符串 `deadbeef`，或者具有个人意义的日期和数字组合。
 
-Later, the idea became more practical: the program's performance improved to surpass hashcat. At the same time, the search target was no longer limited to the number of leading zeros, but allowed users to specify any target UUID prefix, such as the hexadecimal string `deadbeef`, or a combination of dates and numbers with personal significance.
+现在，uuidminer 已经是一个通用的离线玩家 UUID 搜索器，不再局限于寻找前导零。
 
-Now, uuidminer is a general-purpose offline player UUID searcher, no longer limited to finding leading zeros.
+## 功能
 
-## Features
+程序会枚举合法的 Minecraft 玩家名字符集（不考虑中文玩家名），即 0-9、a-z、A-Z 和 \_，共 63 个字符，搜索长度为 3 到 16 的玩家名。每个候选名字都会被映射为对应的离线模式 UUID，并与用户指定的目标前缀进行匹配。
 
-The program enumerates the legal Minecraft player name character set (excluding Chinese player names), i.e., 0-9, a-z, A-Z, and \_, totaling 63 characters. It searches for player names with lengths from 3 to 16. Each candidate name is mapped to its corresponding offline mode UUID and matched against the user-specified target prefix.
+程序支持多 GPU 和多节点并行运行。
 
-The program supports multi-GPU and multi-node parallel execution.
+不传递任何参数时，只要 UUID 至少满足 8 个前导零，程序就会输出结果。用户也可以指定任意 8 位十六进制前缀作为搜索目标。
 
-When no arguments are passed, the program outputs results if the UUID has at least 8 leading zeros. Users can also specify any 8-digit hexadecimal prefix as the search target.
+## 性能与现状
 
-## Performance & Status
+在当前实现中，单张 RTX 3090 的实测性能约为 44 GH/s，大约相当于 hashcat mode 0 "MD5" 的 **70%**，以及 hashcat mode 20 "md5($salt.$pass)" 的 **126%**。
 
-In the current implementation, the measured performance of a single RTX 3090 is approximately 44 GH/s, which is about **70%** of hashcat mode 0 "MD5" and **126%** of hashcat mode 20 "md5($salt.$pass)".
+目前的实现已对这个目标优化到接近最优，由于用户名生成逻辑的存在，它无法达到 hashcat mode 0 纯 MD5 的极限性能。
 
-The current implementation has been optimized close to the theoretical limit for this specific target. Due to the username generation logic, it cannot reach the peak performance of hashcat mode 0 pure MD5.
+在这一性能水平下，所有 8 字符长度的搜索结果已经全部挖掘完成。对于 9 字符长度，单张 3090 大约需要连续运行 4 天时间，目前没有计划将其全部跑完。
 
-At this performance level, the search for all 8-character results has been fully completed. For 9-character length, a single 3090 would take about 4 days of continuous running, and there are currently no plans to exhaustively search it.
+## 关于前导零阈值的设计取舍
 
-## Design Trade-offs on Leading Zero Threshold
+程序以 8 个前导零作为输出阈值，而不是更长的 12 个，即，形如 `00000000-xxxx-xxxx-xxxx-xxxxxxxxxxxx` 而不是 `00000000-0000-xxxx-xxxx-xxxxxxxxxxxx`，原因如下：
 
-The program uses 8 leading zeros as the output threshold instead of a longer 12, i.e., `00000000-xxxx-xxxx-xxxx-xxxxxxxxxxxx` instead of `00000000-0000-xxxx-xxxx-xxxxxxxxxxxx`, for the following reasons:
+在实际搜索中，直到进入 9 字符名字空间后，才首次出现拥有 12 个前导零的结果。换言之，单纯为了“两段前导零”这一视觉效果，计算成本急剧上升，而回报极其有限。
 
-In actual searching, results with 12 leading zeros do not appear until entering the 9-character name space. In other words, purely for the visual effect of "two segments of leading zeros," the computational cost rises sharply while the return is extremely limited.
+同时，由于 UUID 版本位和变体位的存在，第 13 个字符固定为 `3`，从这里开始，视觉上的“稀有感”已经明显下降。个人认为在 12 位之后继续追求更多前导零并没有明显的展示或研究价值。
 
-At the same time, due to the existence of UUID version and variant bits, the 13th character is fixed as `3`. From this point on, the visual "rarity" drops significantly. I personally believe that pursuing more leading zeros beyond 12 bits has no obvious display or research value.
+最后一个考虑是固定前 8 位的结果足够丰富，大多数目标前缀都能在 6 字符甚至 5 字符空间内找到数十个结果，对大多数用户应该已经足够满足需要。
 
-The final consideration is that the results for the first 8 bits are abundant enough. Most target prefixes can find dozens of results within the 6-character or even 5-character space, which should be sufficient for most users.
+## 结果分析工具
 
-## Analysis Tools
+项目额外提供了一个 Python 脚本 `find_most_difficult.py`，用于对搜索结果进行统计分析。
 
-The project provides an additional Python script `find_most_difficult.py` for statistical analysis of the search results.
+脚本仅对“前导零”这一经典目标进行分析，可以自行将其修改为分析其他的前缀或模式。
 
-The script only analyzes the classic "leading zero" target, but you can modify it to analyze other prefixes or patterns.
+## 分布式与多节点配置
 
-## Distributed & Multi-node Configuration
+程序支持在多 GPU、多节点环境下运行，所有分布式行为均通过命令行参数控制，不依赖外部调度机制。
 
-The program supports running in multi-GPU and multi-node environments. All distributed behaviors are controlled via command-line arguments and do not rely on external scheduling mechanisms.
+核心参数如下：
 
-Core parameters are as follows:
+-   `--node-count`：整个集群中逻辑节点的总数
 
--   `--node-count`: The total number of logical nodes in the entire cluster
--   `--node-index`: The node ID of the current instance, starting from 0
--   `--node-slices`: The number of additional continuous work slices claimed by the current node
+-   `--node-index`：当前实例负责的节点编号，从 0 开始
 
-For heterogeneous computing clusters, `--node-slices` is _super effective_. In an environment with unbalanced computing power, high-performance nodes can actively take on more search space by increasing slices without re-partitioning the entire cluster.
+-   `--node-slices`：当前节点额外领取的连续工作分片数量
 
-### Example 1: Homogeneous Cluster
+对于异构算力集群，`--node-slices` 效果拔群。在算力不均衡的环境中，高性能节点可以通过增加 slices 的方式，主动承担更多搜索空间，而无需重新划分整个集群。
 
-Suppose there are 4 machines with similar performance, running:
+### 示例一：均匀算力集群
+
+假设有 4 台性能相近的机器，分别运行：
 
 ```
 --node-index 0 --node-count 4 --node-slices 1
@@ -69,40 +69,40 @@ Suppose there are 4 machines with similar performance, running:
 --node-index 3 --node-count 4 --node-slices 1
 ```
 
-Each machine is responsible for one-quarter of the search space.
+每台机器各自负责四分之一的搜索空间。
 
-### Example 2: Heterogeneous Cluster
+### 示例二：异构算力集群
 
-Suppose there is 1 high-performance machine and 2 low-performance machines. To let the high-performance node take on half of the workload:
+假设有 1 台高算力机器和 2 台低算力机器，若要让高算力节点承担一半工作量：
 
-High-performance node:
+高算力节点：
 
 ```
 --node-index 0 --node-count 4 --node-slices 2
 ```
 
-Two low-performance nodes:
+两台低算力节点：
 
 ```
 --node-index 2 --node-count 4 --node-slices 1
 --node-index 3 --node-count 4 --node-slices 1
 ```
 
-### Result Output & CSV Piping
+### 结果输出与 CSV 管道
 
-The program outputs hits directly to standard output in the format:
+程序会将命中的结果直接输出到标准输出，格式为：
 
 `playerName,uuid`
 
-To save the results as a CSV file:
+若要将结果保存为 CSV 文件：
 
 `uuidminer.exe --target deadbeef > results.csv`
 
-## Known Most Difficult Usernames
+## 已知最困难用户名结果
 
-Below are some of the "most difficult" player name results mined so far.
+以下列出目前已经挖掘出的部分“最困难”玩家名结果。
 
-Difficulty is defined as the UUID having the smallest numerical value.
+难度定义为 UUID 数值最小。
 
 | Length | Name        | UUID                                   |
 | ------ | ----------- | -------------------------------------- |
@@ -114,13 +114,11 @@ Difficulty is defined as the UUID having the smallest numerical value.
 | 8      | `ilAQpWC2`  | `00000000-0003-35b1-9df2-7537067aa4ba` |
 | 9      | `00pD0Yk1A` | `00000000-0000-3710-b5b1-7f404c93943b` |
 
-Note: The results for 9-character length have not been fully mined; the table only lists the currently known smallest result.
+注意：9 字符长度的结果未完全挖掘完成，表格中仅列出目前已知的最小结果。
 
-### Special Results
+### 特殊结果
 
-Results for some well-known [magic numbers](<https://en.wikipedia.org/wiki/Magic_number_(programming)#Debug_value>).
-
-#### deadbeef
+一些知名 [magic number](<https://en.wikipedia.org/wiki/Magic_number_(programming)#Debug_value>) 的结果。
 
 #### deadbeef
 
@@ -189,13 +187,13 @@ Results for some well-known [magic numbers](<https://en.wikipedia.org/wiki/Magic
 | `YCXXte` | `defec8ed-2dac-3001-b07a-932b2de3804a` |
 | `YL9ZqB` | `defec8ed-b2a6-3a58-8460-1bea84e7fadd` |
 
-### Top 10 Smallest Numerical Results for 6-9 Characters
+### 6-9 字符数值最小的前 10 个结果
 
-Since the 6-character length already contains a large number of results, the top 10 results with the smallest numerical values for each length are listed here for reference.
+从 6 字符长度开始已经包含大量结果，特此列出每个长度下数值最小的前 10 个结果，供参考。
 
-These results were generated by the `find_most_difficult.py` script.
+这些结果通过 `find_most_difficult.py` 脚本生成。
 
-#### 6 Characters
+#### 6 字符长度
 
 | Name     | UUID                                   |
 | -------- | -------------------------------------- |
@@ -210,7 +208,7 @@ These results were generated by the `find_most_difficult.py` script.
 | `eZMaFP` | `00000000-a7ee-30f0-966b-6345ae2ed75e` |
 | `Rgk6q8` | `00000000-ab3f-3623-8297-32a7b01fce22` |
 
-#### 7 Characters
+#### 7 字符长度
 
 | Name      | UUID                                   |
 | --------- | -------------------------------------- |
@@ -225,7 +223,7 @@ These results were generated by the `find_most_difficult.py` script.
 | `f3CpfyU` | `00000000-0268-391c-b6ae-8457622b7721` |
 | `FHuombh` | `00000000-0336-3ec2-82da-4e3bc11669a4` |
 
-#### 8 Characters
+#### 8 字符长度
 
 | Name       | UUID                                   |
 | ---------- | -------------------------------------- |
@@ -240,7 +238,7 @@ These results were generated by the `find_most_difficult.py` script.
 | `g2MWP53k` | `00000000-000c-3504-addc-3da1a1e75d61` |
 | `x6Jx7Gxa` | `00000000-000c-3714-92a7-fa35aa41b01f` |
 
-#### 9 Characters (Incomplete)
+#### 9 字符长度（不完整）
 
 | Name        | UUID                                   |
 | ----------- | -------------------------------------- |
@@ -255,6 +253,6 @@ These results were generated by the `find_most_difficult.py` script.
 | `0APQIM3Kc` | `00000000-0016-36f8-91f7-9b2dc671b7c0` |
 | `0oFwFMtgz` | `00000000-0016-3eb7-9600-1a2cd56fb5ed` |
 
-## License
+## 许可证
 
 MIT License
