@@ -1,12 +1,12 @@
 #include "../../common/common.h"
 #include "cuda_backend.h"
 
-#include <cstdio>
-#include <vector>
-#include <thread>
 #include <algorithm>
 #include <chrono>
+#include <cstdio>
 #include <string>
+#include <thread>
+#include <vector>
 
 #ifdef USE_CUDA
 #include "cuda_runtime.h"
@@ -14,18 +14,12 @@
 #endif
 
 #ifdef USE_CUDA
-__constant__ u8 player_name_prefix[] = {
-    'O', 'f', 'f', 'l', 'i', 'n', 'e', 'P', 'l', 'a', 'y', 'e', 'r', ':'
-};
+__constant__ u8 player_name_prefix[] = {'O', 'f', 'f', 'l', 'i', 'n', 'e', 'P', 'l', 'a', 'y', 'e', 'r', ':'};
 
-__constant__ u8 available_chars[] = {
-    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
-    'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w',
-    'x', 'y', 'z',
-    'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W',
-    'X', 'Y', 'Z',
-    '_'
-};
+__constant__ u8 available_chars[] = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f',
+                                     'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v',
+                                     'w', 'x', 'y', 'z', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L',
+                                     'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '_'};
 
 constexpr auto available_char_length = 63;
 constexpr auto available_char_length_pow_2 = 63 * 63;
@@ -35,21 +29,33 @@ constexpr auto player_name_max_length = 16;
 
 // md5 constants and macros
 // from https://github.com/B-Con/crypto-algorithms by Brad Conte
-#define ROTLEFT(a,b) (((a) << (b)) | ((a) >> (32-(b))))
+#define ROTLEFT(a, b) (((a) << (b)) | ((a) >> (32 - (b))))
 
-#define F(x,y,z) (((x) & (y)) | (~(x) & (z)))
-#define G(x,y,z) (((x) & (z)) | ((y) & ~(z)))
-#define H(x,y,z) ((x) ^ (y) ^ (z))
-#define I(x,y,z) ((y) ^ ((x) | ~(z)))
+#define F(x, y, z) (((x) & (y)) | (~(x) & (z)))
+#define G(x, y, z) (((x) & (z)) | ((y) & ~(z)))
+#define H(x, y, z) ((x) ^ (y) ^ (z))
+#define I(x, y, z) ((y) ^ ((x) | ~(z)))
 
-#define FF(a,b,c,d,m,s,t) { (a) += F(b,c,d) + (m) + (t); \
-                            (a) = (b) + ROTLEFT(a,s); }
-#define GG(a,b,c,d,m,s,t) { (a) += G(b,c,d) + (m) + (t); \
-                            (a) = (b) + ROTLEFT(a,s); }
-#define HH(a,b,c,d,m,s,t) { (a) += H(b,c,d) + (m) + (t); \
-                            (a) = (b) + ROTLEFT(a,s); }
-#define II(a,b,c,d,m,s,t) { (a) += I(b,c,d) + (m) + (t); \
-                            (a) = (b) + ROTLEFT(a,s); }
+#define FF(a, b, c, d, m, s, t)                                                                                        \
+    {                                                                                                                  \
+        (a) += F(b, c, d) + (m) + (t);                                                                                 \
+        (a) = (b) + ROTLEFT(a, s);                                                                                     \
+    }
+#define GG(a, b, c, d, m, s, t)                                                                                        \
+    {                                                                                                                  \
+        (a) += G(b, c, d) + (m) + (t);                                                                                 \
+        (a) = (b) + ROTLEFT(a, s);                                                                                     \
+    }
+#define HH(a, b, c, d, m, s, t)                                                                                        \
+    {                                                                                                                  \
+        (a) += H(b, c, d) + (m) + (t);                                                                                 \
+        (a) = (b) + ROTLEFT(a, s);                                                                                     \
+    }
+#define II(a, b, c, d, m, s, t)                                                                                        \
+    {                                                                                                                  \
+        (a) += I(b, c, d) + (m) + (t);                                                                                 \
+        (a) = (b) + ROTLEFT(a, s);                                                                                     \
+    }
 
 __device__ __forceinline__ void md5_transform(u32 state[4], const u32 data[16], const u32 target_state0)
 {
@@ -125,7 +131,8 @@ __device__ __forceinline__ void md5_transform(u32 state[4], const u32 data[16], 
 
     // early stop: check if a matches the requirement for state[0] == target_state0
     // state[0] starts as 0x67452301. We need state[0] + a == target_state0.
-    if (state[0] + a != target_state0) return;
+    if (state[0] + a != target_state0)
+        return;
 
     II(d, a, b, c, data[11], 10, 0xbd3af235)
     II(c, d, a, b, data[2], 15, 0x2ad7d2bb)
@@ -137,8 +144,7 @@ __device__ __forceinline__ void md5_transform(u32 state[4], const u32 data[16], 
     state[3] += d;
 }
 
-template <int Length>
-__global__ void kernel_md5_hash_player_name_t(const u32 offset, const u32 target_state0)
+template <int Length> __global__ void kernel_md5_hash_player_name_t(const u32 offset, const u32 target_state0)
 {
     const u32 thread = blockIdx.x * blockDim.x + threadIdx.x + offset;
     if (thread >= available_char_length_pow_3)
@@ -176,7 +182,10 @@ __global__ void kernel_md5_hash_player_name_t(const u32 offset, const u32 target
     // iterate through all possible player names with (length + 3) characters
     int thread_max_iteration_count = 1;
 #pragma unroll
-    for (int _ = 0; _ < Length; ++_) thread_max_iteration_count *= available_char_length;
+    for (int _ = 0; _ < Length; ++_)
+    {
+        thread_max_iteration_count *= available_char_length;
+    }
 
     for (int _ = 0; _ < thread_max_iteration_count; ++_)
     {
@@ -210,15 +219,20 @@ __global__ void kernel_md5_hash_player_name_t(const u32 offset, const u32 target
             {
                 const int p = w * 4 + b;
                 u8 val;
-                if (p < 14) val = player_name_prefix[p];
-                    // prefix; filling "r:" here since "OfflinePlaye" is filled above
-                else if (p < 14 + Length) val = available_chars[in_traversal_part[p - 14]];
-                    // "variable" part of playername
-                else if (p == 14 + Length) val = byte_a;
-                else if (p == 14 + Length + 1) val = byte_b;
-                else if (p == 14 + Length + 2) val = byte_c;
-                else if (p == 14 + Length + 3) val = 0x80; // 0x80 padding
-                else val = 0; // zero padding
+                if (p < 14)
+                    val = player_name_prefix[p]; // prefix; filling "r:" here since "OfflinePlaye" is filled above
+                else if (p < 14 + Length)
+                    val = available_chars[in_traversal_part[p - 14]]; // "variable" part of playername
+                else if (p == 14 + Length)
+                    val = byte_a;
+                else if (p == 14 + Length + 1)
+                    val = byte_b;
+                else if (p == 14 + Length + 2)
+                    val = byte_c;
+                else if (p == 14 + Length + 3)
+                    val = 0x80; // 0x80 padding
+                else
+                    val = 0; // zero padding
 
                 word |= static_cast<u32>(val) << (b * 8);
             }
@@ -250,21 +264,17 @@ __global__ void kernel_md5_hash_player_name_t(const u32 offset, const u32 target
             const u64 final_lo = current_out_lo & 0x3FFFFFFFFFFFFFFFULL | 0x8000000000000000ULL;
 
             char name_buf[player_name_max_length + 1];
-            for (int k = 0; k < Length; ++k) name_buf[k] = available_chars[in_traversal_part[k]];
+            for (int k = 0; k < Length; ++k)
+                name_buf[k] = available_chars[in_traversal_part[k]];
             name_buf[Length] = byte_a;
             name_buf[Length + 1] = byte_b;
             name_buf[Length + 2] = byte_c;
             name_buf[Length + 3] = '\0';
 
-            printf("%s,%08x-%04x-%04x-%04x-%04x%08x\n",
-                   name_buf,
-                   static_cast<u32>(final_hi >> 32),
-                   static_cast<u32>(final_hi >> 16 & 0xFFFF),
-                   static_cast<u32>(final_hi & 0xFFFF),
-                   static_cast<u32>(final_lo >> 48 & 0xFFFF),
-                   static_cast<u32>(final_lo >> 32 & 0xFFFF),
-                   static_cast<u32>(final_lo & 0xFFFFFFFF)
-            );
+            printf("%s,%08x-%04x-%04x-%04x-%04x%08x\n", name_buf, static_cast<u32>(final_hi >> 32),
+                   static_cast<u32>(final_hi >> 16 & 0xFFFF), static_cast<u32>(final_hi & 0xFFFF),
+                   static_cast<u32>(final_lo >> 48 & 0xFFFF), static_cast<u32>(final_lo >> 32 & 0xFFFF),
+                   static_cast<u32>(final_lo & 0xFFFFFFFF));
         }
     }
 }
@@ -297,8 +307,8 @@ bool CudaBackend::init(const Config& config)
         fprintf(stderr, "Device %d: %s\n", i, prop.name);
     }
 
-    fprintf(stderr, "Node configuration: Index %d / %d (Slices: %d)\n",
-            m_config.node_index, m_config.node_count, m_config.node_slices);
+    fprintf(stderr, "Node configuration: Index %d / %d (Slices: %d)\n", m_config.node_index, m_config.node_count,
+            m_config.node_slices);
     fprintf(stderr, "Target prefix: %s\n\n", m_config.target_str.c_str());
 
     return true;
@@ -319,8 +329,7 @@ void CudaBackend::run()
         {
             constexpr int threads_per_block = 256;
 
-            threads.emplace_back([d, i, this, threads_per_block]()
-            {
+            threads.emplace_back([d, i, this, threads_per_block]() {
                 cudaSetDevice(d);
 
                 constexpr u32 total_global_threads = available_char_length_pow_3;
@@ -328,9 +337,11 @@ void CudaBackend::run()
                 // Calculate node range
                 const u32 node_chunk_size = (total_global_threads + m_config.node_count - 1) / m_config.node_count;
                 const u32 node_start = m_config.node_index * node_chunk_size;
-                const u32 node_end = std::min(node_start + node_chunk_size * m_config.node_slices, total_global_threads);
+                const u32 node_end =
+                    std::min(node_start + node_chunk_size * m_config.node_slices, total_global_threads);
 
-                if (node_start >= node_end) return;
+                if (node_start >= node_end)
+                    return;
 
                 const u32 node_total_threads = node_end - node_start;
 
@@ -339,12 +350,14 @@ void CudaBackend::run()
                 const u32 device_start_offset = d * device_chunk_size;
                 const u32 device_end_offset = std::min(device_start_offset + device_chunk_size, node_total_threads);
 
-                if (device_start_offset >= device_end_offset) return;
+                if (device_start_offset >= device_end_offset)
+                    return;
 
                 const u32 start = node_start + device_start_offset;
                 const u32 count = device_end_offset - device_start_offset;
                 const int blocks = (count + threads_per_block - 1) / threads_per_block;
 
+                // clang-format off
                 // @formatter:off
                 switch (i)
                 {
@@ -364,6 +377,7 @@ void CudaBackend::run()
                 case 13: kernel_md5_hash_player_name_t<13><<<blocks, threads_per_block>>>(start, m_config.target_state0); break;
                 default: ;
                 }
+                // clang-format on
                 // @formatter:on
 
                 cudaDeviceSynchronize();
@@ -372,7 +386,8 @@ void CudaBackend::run()
 
         for (auto& t : threads)
         {
-            if (t.joinable()) t.join();
+            if (t.joinable())
+                t.join();
         }
 
         auto end_time = std::chrono::high_resolution_clock::now();

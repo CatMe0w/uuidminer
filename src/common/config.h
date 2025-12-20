@@ -1,8 +1,8 @@
 #pragma once
 #include "common.h"
+#include <iostream>
 #include <string>
 #include <vector>
-#include <iostream>
 
 struct Config
 {
@@ -71,18 +71,16 @@ struct Config
 
         if (config.node_slices <= 0 || config.node_index + config.node_slices > config.node_count)
         {
-            fprintf(
-                stderr,
-                "Invalid node slices configuration: index %d, slices %d, count %d (index + slices must be <= count)\n\n",
-                config.node_index, config.node_slices, config.node_count);
+            fprintf(stderr,
+                    "Invalid node slices configuration: index %d, slices %d, count %d (index + slices must be <= "
+                    "count)\n\n",
+                    config.node_index, config.node_slices, config.node_count);
             return false;
         }
 
         // convert target_val (big-endian) to target_state0 (little-endian)
-        config.target_state0 = ((target_val & 0xFF) << 24) |
-            ((target_val & 0xFF00) << 8) |
-            ((target_val & 0xFF0000) >> 8) |
-            ((target_val >> 24) & 0xFF);
+        config.target_state0 = ((target_val & 0xFF) << 24) | ((target_val & 0xFF00) << 8) |
+                               ((target_val & 0xFF0000) >> 8) | ((target_val >> 24) & 0xFF);
 
         return true;
     }

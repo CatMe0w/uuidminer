@@ -1,14 +1,14 @@
-#include "../../common/common.h"
 #include "opencl_backend.h"
+#include "../../common/common.h"
+#include <algorithm>
+#include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <fstream>
-#include <sstream>
 #include <iostream>
-#include <vector>
+#include <sstream>
 #include <thread>
-#include <chrono>
-#include <algorithm>
-#include <cmath>
+#include <vector>
 
 // constants from cuda kernel
 constexpr auto available_char_length = 63;
@@ -24,11 +24,15 @@ OpenCLBackend::~OpenCLBackend()
     {
         for (auto& k : dev.kernels)
         {
-            if (k) clReleaseKernel(k);
+            if (k)
+                clReleaseKernel(k);
         }
-        if (dev.program) clReleaseProgram(dev.program);
-        if (dev.command_queue) clReleaseCommandQueue(dev.command_queue);
-        if (dev.context) clReleaseContext(dev.context);
+        if (dev.program)
+            clReleaseProgram(dev.program);
+        if (dev.command_queue)
+            clReleaseCommandQueue(dev.command_queue);
+        if (dev.context)
+            clReleaseContext(dev.context);
     }
 #endif
 }
@@ -36,6 +40,8 @@ OpenCLBackend::~OpenCLBackend()
 #ifdef USE_OPENCL
 const char* cl_get_error_string(cl_int err)
 {
+    // clang-format off
+    // @formatter:off
     switch (err)
     {
     case CL_SUCCESS: return "CL_SUCCESS";
@@ -87,6 +93,8 @@ const char* cl_get_error_string(cl_int err)
     case CL_INVALID_GLOBAL_WORK_SIZE: return "CL_INVALID_GLOBAL_WORK_SIZE";
     default: return "Unknown OpenCL error";
     }
+    // clang-format on
+    // @formatter:on
 }
 
 void OpenCLBackend::check_error(cl_int err, const char* operation)
@@ -228,8 +236,8 @@ bool OpenCLBackend::init(const Config& config)
         m_devices.push_back(dev_ctx);
     }
 
-    fprintf(stderr, "Node configuration: Index %d / %d (Slices: %d)\n",
-            m_config.node_index, m_config.node_count, m_config.node_slices);
+    fprintf(stderr, "Node configuration: Index %d / %d (Slices: %d)\n", m_config.node_index, m_config.node_count,
+            m_config.node_slices);
     fprintf(stderr, "Target prefix: %s\n\n", m_config.target_str.c_str());
 
     return true;
@@ -250,19 +258,20 @@ void OpenCLBackend::run()
 
         for (int d = 0; d < device_count; ++d)
         {
-            threads.emplace_back([d, i, device_count, this]()
-            {
+            threads.emplace_back([d, i, device_count, this]() {
                 DeviceContext& dev = m_devices[d];
-                
+
                 constexpr u32 threads_per_block = 256;
                 constexpr u32 total_global_threads = available_char_length_pow_3;
 
                 // Calculate node range
                 const u32 node_chunk_size = (total_global_threads + m_config.node_count - 1) / m_config.node_count;
                 const u32 node_start = m_config.node_index * node_chunk_size;
-                const u32 node_end = std::min(node_start + node_chunk_size * m_config.node_slices, total_global_threads);
+                const u32 node_end =
+                    std::min(node_start + node_chunk_size * m_config.node_slices, total_global_threads);
 
-                if (node_start >= node_end) return;
+                if (node_start >= node_end)
+                    return;
 
                 const u32 node_total_threads = node_end - node_start;
 
@@ -271,26 +280,28 @@ void OpenCLBackend::run()
                 const u32 device_start_offset = d * device_chunk_size;
                 const u32 device_end_offset = std::min(device_start_offset + device_chunk_size, node_total_threads);
 
-                if (device_start_offset >= device_end_offset) return;
+                if (device_start_offset >= device_end_offset)
+                    return;
 
                 const u32 start = node_start + device_start_offset;
                 const u32 count = device_end_offset - device_start_offset;
-                
+
                 size_t global_work_size = ((count + threads_per_block - 1) / threads_per_block) * threads_per_block;
                 size_t local_work_size = threads_per_block;
 
                 cl_kernel kernel = dev.kernels[i];
                 cl_int err;
-                
+
                 err = clSetKernelArg(kernel, 0, sizeof(u32), &start);
                 check_error(err, "clSetKernelArg 0");
 
                 err = clSetKernelArg(kernel, 1, sizeof(u32), &m_config.target_state0);
                 check_error(err, "clSetKernelArg 1");
 
-                err = clEnqueueNDRangeKernel(dev.command_queue, kernel, 1, nullptr, &global_work_size, &local_work_size, 0, nullptr, nullptr);
+                err = clEnqueueNDRangeKernel(dev.command_queue, kernel, 1, nullptr, &global_work_size, &local_work_size,
+                                             0, nullptr, nullptr);
                 check_error(err, "clEnqueueNDRangeKernel");
-                
+
                 err = clFinish(dev.command_queue);
                 check_error(err, "clFinish");
             });
@@ -298,7 +309,8 @@ void OpenCLBackend::run()
 
         for (auto& t : threads)
         {
-            if (t.joinable()) t.join();
+            if (t.joinable())
+                t.join();
         }
 
         auto end_time = std::chrono::high_resolution_clock::now();

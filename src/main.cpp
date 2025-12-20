@@ -1,7 +1,6 @@
-#include "common/config.h"
 #include "backends/backend.h"
+#include "common/config.h"
 #include <memory>
-#include <iostream>
 
 #ifdef USE_CUDA
 #include "backends/cuda/cuda_backend.h"
