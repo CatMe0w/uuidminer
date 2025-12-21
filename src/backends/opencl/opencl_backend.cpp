@@ -107,6 +107,10 @@ bool OpenCLBackend::init(const Config& config)
 {
     m_config = config;
 
+    fprintf(stderr, "Node configuration: Index %d / %d (Slices: %d)\n", m_config.node_index, m_config.node_count,
+            m_config.node_slices);
+    fprintf(stderr, "Target prefix: %s\n", m_config.target_str.c_str());
+
 #ifndef USE_OPENCL
     fprintf(stderr, "OpenCL support not compiled in.\n");
     return false;
@@ -213,10 +217,7 @@ bool OpenCLBackend::init(const Config& config)
 
         m_devices.push_back(dev_ctx);
     }
-
-    fprintf(stderr, "Node configuration: Index %d / %d (Slices: %d)\n", m_config.node_index, m_config.node_count,
-            m_config.node_slices);
-    fprintf(stderr, "Target prefix: %s\n\n", m_config.target_str.c_str());
+    fprintf(stderr, "\n");
 
     return true;
 #endif

@@ -55,13 +55,17 @@ bool MetalBackend::init(const Config& config)
 {
     _config = config;
 
+    fprintf(stderr, "Node configuration: Index %d / %d (Slices: %d)\n",
+        _config.node_index, _config.node_count, _config.node_slices);
+    fprintf(stderr, "Target prefix: %s\n", _config.target_str.c_str());
+
     _device = MTLCreateSystemDefaultDevice();
     if (!_device) {
         std::cerr << "Error: No Metal device found." << std::endl;
         return false;
     }
 
-    std::cout << "Using Metal device: " << [_device.name UTF8String] << std::endl;
+    std::cout << "Using Metal device: " << [_device.name UTF8String] << std::endl << std::endl;
 
     _commandQueue = [_device newCommandQueue];
     if (!_commandQueue) {
@@ -117,10 +121,6 @@ bool MetalBackend::init(const Config& config)
 
         _pipelineStates.push_back(pso);
     }
-
-    fprintf(stderr, "Node configuration: Index %d / %d (Slices: %d)\n",
-        _config.node_index, _config.node_count, _config.node_slices);
-    fprintf(stderr, "Target prefix: %s\n\n", _config.target_str.c_str());
 
     return true;
 }

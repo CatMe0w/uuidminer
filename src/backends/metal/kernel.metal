@@ -1,7 +1,6 @@
 #include <metal_stdlib>
 using namespace metal;
 
-// Keep constants aligned with CUDA implementation
 constant uchar player_name_prefix[] = {
     'O', 'f', 'f', 'l', 'i', 'n', 'e', 'P', 'l', 'a', 'y', 'e', 'r', ':'
 };
@@ -40,7 +39,6 @@ struct Result {
     ulong final_lo;
 };
 
-// MD5 constants and macros (ported from CUDA)
 static inline uint ROTLEFT(uint a, uint b) { return (a << b) | (a >> (32u - b)); }
 
 static inline uint F(uint x, uint y, uint z) { return (x & y) | (~x & z); }
