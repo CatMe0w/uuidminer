@@ -6,6 +6,10 @@ A high-performance CUDA/OpenCL/Metal search tool designed to find offline-mode M
 
 In offline mode, a player's UUID is determined by the MD5 hash of the string `OfflinePlayer:playername`, with the version and variant bits set according to UUID v3 rules. Since the player name space can be viewed as an enumerable search space, this project performs a parallel search on player names to filter out results where the UUID high bits match a specific pattern.
 
+![](deadbeef.jpg)
+
+> In offline mode, the player name `CBRVJ` has a UUID with the prefix `deadbeef`.
+
 ## Motivation & Evolution
 
 This project started as a joke: if we treat player UUIDs like Bitcoin block hashes, could we define a "name difficulty" and find the "most difficult" player name?
