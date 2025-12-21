@@ -6,6 +6,10 @@
 #include "backends/cuda/cuda_backend.h"
 #endif
 
+#ifdef USE_METAL
+#include "backends/metal/metal_backend.h"
+#endif
+
 #ifdef USE_OPENCL
 #include "backends/opencl/opencl_backend.h"
 #endif
@@ -28,6 +32,15 @@ int main(int argc, char** argv)
         backend = std::make_unique<CudaBackend>();
 #else
         fprintf(stderr, "CUDA backend not available (compiled without USE_CUDA)\n");
+        return 1;
+#endif
+    }
+    else if (config.backend == "metal")
+    {
+#ifdef USE_METAL
+        backend = std::make_unique<MetalBackend>();
+#else
+        fprintf(stderr, "Metal backend not available (compiled without USE_METAL)\n");
         return 1;
 #endif
     }

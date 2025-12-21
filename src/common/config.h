@@ -1,8 +1,6 @@
 #pragma once
 #include "common.h"
-#include <iostream>
 #include <string>
-#include <vector>
 
 struct Config
 {
@@ -11,12 +9,24 @@ struct Config
     int node_slices = 1;
     std::string target_str = "00000000";
     u32 target_state0 = 0;
+#ifdef USE_METAL
+    // Metal watchdog/work scheduling knobs
+    //
+    // Default behavior chunks work to avoid macOS GPU watchdog (Impacting Interactivity)
+    // Use --metal-no-chunking to intentionally reproduce watchdog kills
+    // Use --metal-iter-chunk N to control chunk size
+    u32 metal_iter_chunk = 256;
+    bool metal_no_chunking = false;
+#endif
+
 #ifdef USE_CUDA
-    std::string backend = "cuda"; // Default to cuda
+    std::string backend = "cuda";
+#elif defined(USE_METAL)
+    std::string backend = "metal";
 #elif defined(USE_OPENCL)
-    std::string backend = "opencl"; // Default to opencl
+    std::string backend = "opencl";
 #else
-    std::string backend = ""; // No default backend; XXX: add CPU backend
+    std::string backend = ""; // No default backend, will error out
 #endif
 
     static bool parse(const int argc, char** argv, Config& config)
@@ -44,6 +54,16 @@ struct Config
             {
                 config.backend = argv[++i];
             }
+#ifdef USE_METAL
+            else if (arg == "--metal-iter-chunk" && i + 1 < argc)
+            {
+                config.metal_iter_chunk = static_cast<u32>(std::stoul(argv[++i]));
+            }
+            else if (arg == "--metal-no-chunking")
+            {
+                config.metal_no_chunking = true;
+            }
+#endif
         }
 
         if (config.target_str.length() != 8)

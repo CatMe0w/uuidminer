@@ -4,13 +4,18 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 if(APPLE)
     option(USE_CUDA "Enable CUDA support" OFF)
+    option(USE_METAL "Enable Metal support" ON)
+    option(USE_OPENCL "Enable OpenCL support" OFF) # OpenCL results are incorrect on macOS
 else()
     option(USE_CUDA "Enable CUDA support" ON)
+    option(USE_METAL "Enable Metal support" OFF)
+    option(USE_OPENCL "Enable OpenCL support" ON) 
 endif()
-option(USE_OPENCL "Enable OpenCL support" ON)
 
 if(USE_CUDA)
     project(uuidminer LANGUAGES CXX CUDA)
+elseif(USE_METAL)
+    project(uuidminer LANGUAGES CXX OBJCXX)
 else()
     project(uuidminer LANGUAGES CXX)
 endif()
@@ -54,6 +59,31 @@ if(USE_OPENCL)
     include_directories(${CMAKE_CURRENT_BINARY_DIR}/generated)
 endif()
 
+if(USE_METAL)
+    find_package(Python3 REQUIRED)
+    find_library(METAL_LIB Metal)
+    find_library(FOUNDATION_LIB Foundation)
+
+    set(METAL_KERNEL_SRC "${CMAKE_CURRENT_SOURCE_DIR}/src/backends/metal/kernel.metal")
+    set(METAL_KERNEL_HEADER "${CMAKE_CURRENT_BINARY_DIR}/generated/metal_kernel_source.h")
+
+    add_custom_command(
+        OUTPUT ${METAL_KERNEL_HEADER}
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/scripts/embed_kernel.py ${METAL_KERNEL_SRC} ${METAL_KERNEL_HEADER} kMetalKernelSource
+        DEPENDS ${METAL_KERNEL_SRC} ${CMAKE_CURRENT_SOURCE_DIR}/scripts/embed_kernel.py
+        COMMENT "Embedding Metal kernel source"
+    )
+
+    list(APPEND SOURCES
+        src/backends/metal/metal_backend.mm
+        ${METAL_KERNEL_HEADER}
+    )
+    add_compile_definitions(USE_METAL)
+    
+    # Add generated directory to include path
+    include_directories(${CMAKE_CURRENT_BINARY_DIR}/generated)
+endif()
+
 add_executable(uuidminer ${SOURCES})
 
 target_include_directories(uuidminer PRIVATE src)
@@ -74,6 +104,11 @@ endif()
 
 if(USE_OPENCL)
     target_link_libraries(uuidminer PRIVATE OpenCL::OpenCL)
+endif()
+
+if(USE_METAL)
+    target_link_libraries(uuidminer PRIVATE ${METAL_LIB} ${FOUNDATION_LIB})
+    target_compile_options(uuidminer PRIVATE $<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>)
 endif()
 
 # Windows/Visual Studio specific settings
