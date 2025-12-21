@@ -1,12 +1,9 @@
 #include "opencl_backend.h"
+#include "opencl_kernel_source.h"
 #include "../../common/common.h"
 #include <algorithm>
 #include <chrono>
-#include <cmath>
 #include <cstdio>
-#include <fstream>
-#include <iostream>
-#include <sstream>
 #include <thread>
 #include <vector>
 
@@ -104,20 +101,6 @@ void OpenCLBackend::check_error(cl_int err, const char* operation)
         fprintf(stderr, "OpenCL Error during %s: %s\n", operation, cl_get_error_string(err));
     }
 }
-
-bool OpenCLBackend::load_kernel_source(const std::string& filename, std::string& source)
-{
-    std::ifstream file(filename);
-    if (!file.is_open())
-    {
-        fprintf(stderr, "Failed to open kernel file: %s\n", filename.c_str());
-        return false;
-    }
-    std::stringstream buffer;
-    buffer << file.rdbuf();
-    source = buffer.str();
-    return true;
-}
 #endif
 
 bool OpenCLBackend::init(const Config& config)
@@ -163,12 +146,7 @@ bool OpenCLBackend::init(const Config& config)
     clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU, num_devices, device_ids.data(), nullptr);
     fprintf(stderr, "Found %d OpenCL device(s)\n", num_devices);
 
-    std::string kernel_source;
-    if (!load_kernel_source("src/backends/opencl/kernel.cl", kernel_source) &&
-        !load_kernel_source("../src/backends/opencl/kernel.cl", kernel_source))
-    {
-        return false;
-    }
+    std::string kernel_source = opencl_kernel_source;
 
     const char* source_str = kernel_source.c_str();
     size_t source_size = kernel_source.size();

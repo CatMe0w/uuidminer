@@ -31,11 +31,27 @@ if(USE_CUDA)
 endif()
 
 if(USE_OPENCL)
+    find_package(Python3 REQUIRED)
     find_package(OpenCL REQUIRED)
+
+    set(OPENCL_KERNEL_SRC "${CMAKE_CURRENT_SOURCE_DIR}/src/backends/opencl/kernel.cl")
+    set(OPENCL_KERNEL_HEADER "${CMAKE_CURRENT_BINARY_DIR}/generated/opencl_kernel_source.h")
+
+    add_custom_command(
+        OUTPUT ${OPENCL_KERNEL_HEADER}
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/scripts/embed_kernel.py ${OPENCL_KERNEL_SRC} ${OPENCL_KERNEL_HEADER} opencl_kernel_source
+        DEPENDS ${OPENCL_KERNEL_SRC} ${CMAKE_CURRENT_SOURCE_DIR}/scripts/embed_kernel.py
+        COMMENT "Embedding OpenCL kernel source"
+    )
+
     list(APPEND SOURCES
         src/backends/opencl/opencl_backend.cpp
+        ${OPENCL_KERNEL_HEADER}
     )
     add_compile_definitions(USE_OPENCL)
+    
+    # Add generated directory to include path
+    include_directories(${CMAKE_CURRENT_BINARY_DIR}/generated)
 endif()
 
 add_executable(uuidminer ${SOURCES})
