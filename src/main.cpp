@@ -19,8 +19,6 @@ int main(int argc, char** argv)
     Config config;
     if (!Config::parse(argc, argv, config))
     {
-        fprintf(stderr, "Press any key to exit...");
-        (void)getchar();
         return 1;
     }
 
@@ -66,9 +64,6 @@ int main(int argc, char** argv)
     }
 
     backend->run();
-
-    fprintf(stderr, "Press any key to exit...");
-    (void)getchar();
 
     return 0;
 }
