@@ -2,9 +2,9 @@
 
 中文版请见[这里](https://github.com/CatMe0w/uuidminer/blob/master/README_zh.md)。
 
-uuidminer is a high-performance CUDA-based search tool designed to find offline-mode Minecraft player names that correspond to UUIDs with specific prefixes.
+A high-performance CUDA/OpenCL/Metal search tool designed to find offline-mode Minecraft player names that correspond to UUIDs with specific prefixes.
 
-In offline mode, a player's UUID is determined by the MD5 hash of the string `OfflinePlayer:[playername]`, with the version and variant bits set according to UUID v3 rules. Since the player name space can be viewed as an enumerable search space, this project performs a parallel search on player names to filter out results where the UUID high bits match a specific pattern.
+In offline mode, a player's UUID is determined by the MD5 hash of the string `OfflinePlayer:playername`, with the version and variant bits set according to UUID v3 rules. Since the player name space can be viewed as an enumerable search space, this project performs a parallel search on player names to filter out results where the UUID high bits match a specific pattern.
 
 ## Motivation & Evolution
 
@@ -16,11 +16,40 @@ Now, uuidminer is a general-purpose offline player UUID searcher, no longer limi
 
 ## Features
 
-The program enumerates the legal Minecraft player name character set (excluding CJK player names), i.e., 0-9, a-z, A-Z, and \_, totaling 63 characters. It searches for player names with lengths from 3 to 16. Each candidate name is mapped to its corresponding offline mode UUID and matched against the user-specified target prefix.
+The program enumerates the legal Minecraft player name character set (excluding CJK player names), i.e., 0-9, a-z, A-Z, and \_, totaling 63 characters. It searches for player names with lengths from 3 to 16. Each candidate name is first mapped to its corresponding offline-mode UUID, then matched against the user-specified target prefix.
 
-The program supports multi-GPU and multi-node parallel execution.
+The program supports multi-GPU and multi-node parallel execution. It provides CUDA, OpenCL, and Metal backends, and runs on Windows, Linux, and macOS.
 
 When no arguments are passed, the program outputs results if the UUID has at least 8 leading zeros. Users can also specify any 8-digit hexadecimal prefix as the search target.
+
+## Build
+
+Requires CMake >= 3.18, Python 3, and a compiler toolchain for your platform.
+
+By default, CUDA and OpenCL backends are built on Windows and Linux, while the Metal backend is built on macOS.
+
+```
+cmake -B build
+cmake --build build --config Release
+./build/uuidminer.exe
+```
+
+To choose which backends to build, pass `-DUSE_CUDA`, `-DUSE_OPENCL`, or `-DUSE_METAL`. For example, to disable the CUDA backend:
+
+```
+cmake -B build -DUSE_CUDA=OFF
+cmake --build build --config Release
+```
+
+## Usage
+
+```
+uuidminer.exe [--target <hex_prefix>] [--backend <backend>] [--node-index N] [--node-count M] [--node-slices S]
+```
+
+-   `--target <hex_prefix>`: Target UUID prefix, 8 hex digits (4 bytes). Defaults to `00000000` (i.e., at least 8 leading zeros).
+-   `--backend <backend>`: Backend to use. One of `cuda`, `opencl`, or `metal`. By default, an available backend is selected automatically.
+-   `--node-index`, `--node-count`, `--node-slices`: See the "Distributed & Multi-node Configuration" section.
 
 ## Performance & Status
 
@@ -48,7 +77,7 @@ The script only analyzes the classic "leading zero" target, but you can modify i
 
 ## Distributed & Multi-node Configuration
 
-The program supports running in multi-GPU and multi-node environments. All distributed behaviors are controlled via command-line arguments and do not rely on external scheduling mechanisms.
+The program supports running in multi-GPU and multi-node environments. All distributed behaviors are controlled via command-line arguments.
 
 Core parameters are as follows:
 
